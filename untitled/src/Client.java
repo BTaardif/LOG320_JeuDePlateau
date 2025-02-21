@@ -12,7 +12,7 @@ class Client {
 
         try {
             MyClient = new Socket("localhost", 8888);
-
+`x
             input    = new BufferedInputStream(MyClient.getInputStream());
             output   = new BufferedOutputStream(MyClient.getOutputStream());
             BufferedReader console = new BufferedReader(new InputStreamReader(System.in));
