@@ -1,5 +1,3 @@
-
-
 class Move
 {
     private int row;
