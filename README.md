@@ -13,11 +13,11 @@ Les objectifs de ce laboratoire sont :
 • Exploration et implémentation de différentes stratégies afin d’améliorer l’efficacité de votre algorithme de 
 décision.
 
-### <p align="center">Introduction </p>
+# <p align="center">Introduction </p>
 <p align="center">Note sur l'énoncé </p>
 
 
-#### Objectifs
+### Objectifs
 - Implémentation de l’algorithme minimax et alpha-beta
 Benjamin : mon élagage pour le alpha-beta ne fonctionnait pas. Si quelqu’un a eu tous ses points pour ça je propose qu’on prenne celui là.
 #####
@@ -27,7 +27,7 @@ Heuristique : qui sert à découvrir. Découvrir les possibilités des coûts du
 - Exploration et implémentation de différentes stratégies afin d’améliorer l’efficacité de votre algorithme de décision.
 En apprendre sur le jeu de tic tac toe pour pouvoir créer un algorithme qui se démarque. On ne peut pas juste créer une algorithme minimax et espérer qu’il gagne contre les autres algorithmes minimax.
 ##
-#### INTERFACE
+### INTERFACE
  
 -	Implémenter un interface graphique minimal dans le terminal pour suivre le déroulement de la partie.
 #####
@@ -35,7 +35,7 @@ En apprendre sur le jeu de tic tac toe pour pouvoir créer un algorithme qui se 
 #####
 -	Il faut implémenter le fait que le serveur prévoit dans quel jeu il faut jouer. (Giant Board vs innerBoard)
 ##
-##### FONCTIONS À IMPLÉMENTER
+#### FONCTIONS À IMPLÉMENTER
  
 ##### Générateur de mouvements : 
 - Génère tous les coûts possibles. 
@@ -49,7 +49,7 @@ En apprendre sur le jeu de tic tac toe pour pouvoir créer un algorithme qui se 
 ###
 ### 
 ###
-### <p align="center">Point de Contrôle 1 : 14 mars 2024 </p>
+# <p align="center">Point de Contrôle 1 : 14 mars 2024 </p>
 ###  
 Notre AI doit :
 
