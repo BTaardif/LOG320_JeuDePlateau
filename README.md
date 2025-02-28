@@ -35,7 +35,7 @@ En apprendre sur le jeu de tic tac toe pour pouvoir créer un algorithme qui se 
 #####
 -	Il faut implémenter le fait que le serveur prévoit dans quel jeu il faut jouer. (Giant Board vs innerBoard)
 ##
-#### FONCTIONS À IMPLÉMENTER
+### FONCTIONS À IMPLÉMENTER
  
 ##### Générateur de mouvements : 
 - Génère tous les coûts possibles. 
