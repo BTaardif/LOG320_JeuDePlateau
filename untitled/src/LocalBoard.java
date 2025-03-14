@@ -10,9 +10,12 @@ public class LocalBoard {
     private Mark[][] board;
     private final int TAILLE = 3;
     private String position;
+    private Case case_id;
+    private Case [][] boardCases;
+    
     
 
-    //CONSTRUCTEUR :
+    //CONSTRUCTEUR
     // Initialise le plateau
     // Ne pas changer la signature de cette méthode
     public LocalBoard() {
@@ -26,16 +29,50 @@ public class LocalBoard {
         }
     }
 
-    public LocalBoard(String lettre, String nombre) {
-        board = new Mark[TAILLE][TAILLE];
-        this.position = lettre + nombre;
-
-        for (int i = 0; i < board.length; i++) {
-            for (int j = 0; j < board.length; j++) {
-                board[i][j] = Mark.EMPTY;
+    public LocalBoard(String[] lettre, String[] nombre) {
+        // Initialisation du tableau de cases 3x3 (taille définie par TAILLE)
+        boardCases = new Case[TAILLE][TAILLE];
+        
+        // Parcours de chaque ligne de la grille 3x3
+        for (int i = 0; i < TAILLE; i++) {
+            
+            // Récupère la lettre associée à la ligne courante
+            String caseLettre = lettre[GiantBoard.compteur_board_lettre];
+            
+            // Parcours de chaque colonne de la grille 3x3 pour cette ligne
+            for (int j = 0; j < TAILLE; j++) {
+                
+                // Crée l'identifiant de la case en combinant la lettre (ligne) et le numéro (colonne)
+                // Exemple : A1, A2, A3, B1, B2, B3, etc.
+                // Le numéro de la colonne est ajusté en utilisant `GiantBoard.compteur_board_number + j`
+                this.case_id = new Case(caseLettre + nombre[GiantBoard.compteur_board_number + j], Mark.EMPTY);
+                
+                // Affecte la nouvelle case à la position (i, j) dans le tableau 3x3
+                boardCases[i][j] = case_id;
             }
-
+            
+            // Incrémentation de `compteur_board_lettre` pour passer à la lettre suivante (pour la prochaine ligne)
+            GiantBoard.compteur_board_lettre++;
         }
+    }
+    
+
+    // Méthode pour afficher la matrice
+    public void afficherBoard() {
+        for (int i = 0; i < TAILLE; i++) {
+            for (int j = 0; j < TAILLE; j++) {
+                System.out.print(board[i][j] + " ");
+            }
+            System.out.println();
+        }
+    }
+
+    public Case[][] getBoardCases() {
+        return boardCases;
+    }
+
+    public void setBoardCase(){
+        
     }
 
     public LocalBoard(char[] flatBoard) {
@@ -81,6 +118,10 @@ public class LocalBoard {
             }
         }
         return true;
+    }
+
+    public void humanPlay(String data){
+
     }
 
     public boolean isWon(Mark mark) {
@@ -171,4 +212,3 @@ public class LocalBoard {
         return 0; // Match nul ou jeu en cours
     }
 }
-    
