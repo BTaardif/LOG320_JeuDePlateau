@@ -16,11 +16,13 @@ class Client {
             output   = new BufferedOutputStream(MyClient.getOutputStream());
             BufferedReader console = new BufferedReader(new InputStreamReader(System.in));
             while(1 == 1){
+                // 0 indique que le plateau initiale est vide
                 char cmd = 0;
 
                 cmd = (char)input.read();
                 System.out.println(cmd);
                 // Debut de la partie en joueur blanc
+                // blanc = X
                 if(cmd == '1'){
                     byte[] aBuffer = new byte[1024];
 
@@ -47,7 +49,9 @@ class Client {
                     output.write(move.getBytes(),0,move.length());
                     output.flush();
                 }
+
                 // Debut de la partie en joueur Noir
+                // Noir == O
                 if(cmd == '2'){
                     System.out.println("Nouvelle partie! Vous jouer noir, attendez le coup des blancs");
                     byte[] aBuffer = new byte[1024];
@@ -73,6 +77,7 @@ class Client {
 
                 // Le serveur demande le prochain coup
                 // Le message contient aussi le dernier coup joue.
+                // Tour du programme de jouer
                 if(cmd == '3'){
                     byte[] aBuffer = new byte[16];
 
