@@ -93,7 +93,7 @@ class Client {
                     System.out.println("size :" + size);
                     input.read(aBuffer,0,size);
 
-                    String s = new String(aBuffer);
+                    String s = new String(aBuffer).trim();
                     System.out.println("Dernier coup :"+ s);
                     System.out.println("Entrez votre coup : ");
 
