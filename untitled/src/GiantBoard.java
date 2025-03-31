@@ -42,7 +42,7 @@ public class GiantBoard {
         
         // Création de l'ID pour chaque LocalBoard en utilisant la ligne et la colonne
         // On concatène "ligne" et "colonne" pour former un identifiant comme "00", "01", etc.
-        String formattedID = Integer.toString(ligne) + Integer.toString(colonne);
+        String formattedID = Integer.toString(colonne) + Integer.toString(ligne);
         
         // Création d'un nouveau LocalBoard avec les lettres et les numéros passés en paramètres
         LocalBoard board = new LocalBoard(letters, numbers);
