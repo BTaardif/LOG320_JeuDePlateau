@@ -1,13 +1,17 @@
-// GiantBoard.java
-// Represents the 9x9 main board, containing 9 Board objects.
+// GiantBoard.java (Revised)
 import java.util.ArrayList;
 import java.util.List;
 
 public class GiantBoard {
-    private Board[][] localBoards = new Board[3][3];
+    public Board[][] localBoards = new Board[3][3];
     private int globalWinner = Board.EMPTY;
     private int nextLocalBoardRow = -1; // -1 means play anywhere
     private int nextLocalBoardCol = -1;
+
+    // --- State history for robust undo ---
+    private int previousLocalBoardWinner = Board.EMPTY; // Winner of the board *before* the last move was undone
+    private int previousGlobalWinner = Board.EMPTY; // Global winner *before* the last move was undone
+
 
     public GiantBoard() {
         for (int i = 0; i < 3; i++) {
@@ -15,360 +19,467 @@ public class GiantBoard {
                 localBoards[i][j] = new Board();
             }
         }
+        // Initial state: globalWinner = EMPTY, nextLocalBoard = -1
     }
 
-    // Copy constructor for simulation
+    // Copy constructor for simulation (ensure deep copy)
     public GiantBoard(GiantBoard original) {
-        this.globalWinner = original.globalWinner;
-        this.nextLocalBoardRow = original.nextLocalBoardRow;
-        this.nextLocalBoardCol = original.nextLocalBoardCol;
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
                 this.localBoards[i][j] = new Board(original.localBoards[i][j]);
             }
         }
+        this.globalWinner = original.globalWinner;
+        this.nextLocalBoardRow = original.nextLocalBoardRow;
+        this.nextLocalBoardCol = original.nextLocalBoardCol;
+        // History fields don't need deep copy as they are primitives overwritten on undo
+        this.previousGlobalWinner = original.previousGlobalWinner;
+        this.previousLocalBoardWinner = original.previousLocalBoardWinner;
     }
 
-    // Update the board state from the server's flat array
+
+    // Update board state from server representation
     public void updateBoard(int[][] flatBoard) {
-        for (int globalRow = 0; globalRow < 3; globalRow++) {
-            for (int globalCol = 0; globalCol < 3; globalCol++) {
-                // Check if the local board has a winner based on its state
-                if (localBoards[globalRow][globalCol].getWinner() == Board.EMPTY && !localBoards[globalRow][globalCol].isTerminal()) {
-                    for (int localRow = 0; localRow < 3; localRow++) {
-                        for (int localCol = 0; localCol < 3; localCol++) {
-                            int flatRow = globalRow * 3 + localRow;
-                            int flatCol = globalCol * 3 + localCol;
-                            int currentVal = localBoards[globalRow][globalCol].getCell(localRow, localCol);
-                            int newVal = flatBoard[flatRow][flatCol];
-                            if (currentVal == Board.EMPTY && newVal != Board.EMPTY) {
-                                localBoards[globalRow][globalCol].placeMove(localRow, localCol, newVal);
-                            } else if (currentVal != Board.EMPTY && newVal == Board.EMPTY){
-                                // This case should ideally not happen if the server sends full state
-                                // but good for robustness or potential resets. Consider logging.
-                                // For now, we assume server state is correct and board updates reflect it.
-                                // If implementing local resets/undo, clear the cell here.
-                            } else if (currentVal != newVal) {
-                                // Discrepancy detected, server state takes precedence
-                                localBoards[globalRow][globalCol].placeMove(localRow, localCol, newVal); // Force update if possible
-                            }
+        if (flatBoard == null || flatBoard.length != 9 || flatBoard[0].length != 9) {
+            System.err.println("Error: Invalid flatBoard dimensions received in updateBoard.");
+            // Handle error state, maybe reset board?
+            return;
+        }
+        for (int lbRow = 0; lbRow < 3; lbRow++) {
+            for (int lbCol = 0; lbCol < 3; lbCol++) {
+                // Create a fresh board, place moves, let Board handle recalcWinner
+                localBoards[lbRow][lbCol] = new Board(); // Reset board
+                for (int i = 0; i < 3; i++) {
+                    for (int j = 0; j < 3; j++) {
+                        int globalRow = lbRow * 3 + i;
+                        int globalCol = lbCol * 3 + j;
+                        int value = flatBoard[globalRow][globalCol];
+                        if (value == Board.PLAYER_X || value == Board.PLAYER_O) {
+                            // Use placeMove - it handles setting cell AND recalcWinner
+                            // Ignore return value here, just setting initial state
+                            localBoards[lbRow][lbCol].placeMove(i, j, value);
                         }
                     }
-                    localBoards[globalRow][globalCol].getWinner(); // Recalculate winner status after update
                 }
+                // Winner status is now correctly set within the local board by placeMove
             }
         }
-        checkGlobalWin(); // Update global winner status
+        // After updating all local boards, recalculate the global status
+        recalcGlobalWinner();
+        // nextLocalBoardRow/Col needs to be set by the client based on opponent's last move
+        // Resetting it here might be incorrect if called mid-game? Consider context.
+        // For initial setup (cmd 1/2), this is fine. For updates after opponent move (cmd 3),
+        // the client should call setNextBoardFromLastMove *after* this update.
+        // Assuming this is primarily for initial setup or state sync:
+        // nextLocalBoardRow = -1; // Or determine based on game rules if update implies constraint
+        // nextLocalBoardCol = -1;
     }
 
-
-    // Make a move specified by global coordinates (0-8)
+    // Attempts to make a move
     public boolean makeMove(int globalRow, int globalCol, int player) {
-        int localBoardRow = globalRow / 3;
-        int localBoardCol = globalCol / 3;
-        int localRow = globalRow % 3;
-        int localCol = globalCol % 3;
-
-        Board targetBoard = localBoards[localBoardRow][localBoardCol];
-
-        // Check if the move is valid based on rules [cite: 15, 16, 18, 19]
         if (!isValidMove(globalRow, globalCol)) {
-            System.err.println("Invalid move attempted at Global (" + globalRow + "," + globalCol + "). Target board playable: " + isPlayableBoard(localBoardRow, localBoardCol));
+            // System.out.println("DEBUG: Invalid move attempted: " + globalRow + "," + globalCol + " NextBoard: " + nextLocalBoardRow + "," + nextLocalBoardCol);
+            // System.out.println("DEBUG: Current board state:\n" + this);
             return false;
         }
 
+        int localBoardRow = globalRow / 3;
+        int localBoardCol = globalCol / 3;
+        int cellRow = globalRow % 3;
+        int cellCol = globalCol % 3;
 
-        if (targetBoard.placeMove(localRow, localCol, player)) {
-            checkGlobalWin(); // Check if this move wins the global board
+        Board targetBoard = localBoards[localBoardRow][localBoardCol];
 
-            // Determine the next required local board [cite: 15, 16]
-            Board nextBoard = localBoards[localRow][localCol];
-            if (nextBoard.isTerminal()) { // Target board is won or full [cite: 18, 19]
-                nextLocalBoardRow = -1; // Player can play anywhere open
+        // Store state for potential undo
+        // Store BEFORE making the move
+        previousLocalBoardWinner = targetBoard.getWinner();
+        previousGlobalWinner = this.globalWinner;
+
+        boolean moved = targetBoard.placeMove(cellRow, cellCol, player);
+
+        if (moved) {
+            // Update global winner based on potential change in local board winner
+            recalcGlobalWinner();
+
+            // Determine next board constraint
+            Board nextTargetLocalBoard = localBoards[cellRow][cellCol];
+            if (nextTargetLocalBoard.isTerminal()) {
+                nextLocalBoardRow = -1; // Play anywhere
                 nextLocalBoardCol = -1;
             } else {
-                nextLocalBoardRow = localRow;
-                nextLocalBoardCol = localCol;
+                nextLocalBoardRow = cellRow;
+                nextLocalBoardCol = cellCol;
             }
             return true;
+        } else {
+            // Should not happen if isValidMove is correct, but log if it does
+            System.err.println("Error: makeMove failed for a supposedly valid move: " + globalRow + "," + globalCol);
+            // Restore pre-move state just in case something partial happened (though Board.placeMove should be atomic)
+            this.globalWinner = previousGlobalWinner;
+            // Undoing the potential partial move in local board might be needed if placeMove implementation changes
+            // targetBoard.undoMove(cellRow, cellCol); // But current Board.placeMove doesn't modify on failure
+            return false;
         }
-        return false;
     }
 
-    // Check if a specific global cell is a valid move according to rules
-    public boolean isValidMove(int globalRow, int globalCol) {
-        if (globalRow < 0 || globalRow > 8 || globalCol < 0 || globalCol > 8 || globalWinner != Board.EMPTY) {
-            return false; // Out of bounds or game already won
+
+    // Undoes the last move
+    public void undoMove(int globalRow, int globalCol, int prevNextRow, int prevNextCol) {
+        if (globalRow < 0 || globalRow > 8 || globalCol < 0 || globalCol > 8) {
+            System.err.println("UndoMove Error: Invalid global coordinates " + globalRow + "," + globalCol);
+            return; // Bounds check
         }
+
+        int localRow = globalRow / 3;
+        int localCol = globalCol / 3;
+        int cellRow = globalRow % 3;
+        int cellCol = globalCol % 3;
+
+        if (localRow >= 0 && localRow < 3 && localCol >= 0 && localCol < 3) {
+            Board targetBoard = localBoards[localRow][localCol];
+
+            // Undo the move on the local board. Board.undoMove calls recalcWinner internally.
+            targetBoard.undoMove(cellRow, cellCol);
+
+            // *** Crucial: Restore the winner state of the local board AS IT WAS BEFORE the move was made ***
+            // This handles cases where undoing doesn't perfectly revert state via recalc alone (e.g., complex draw scenarios)
+            // We achieve this implicitly because Board.undoMove->recalcWinner should correctly calculate the state
+            // resulting from removing the piece. If Board.recalcWinner is perfect, explicit restoration isn't needed.
+            // Let's trust Board.recalcWinner for now.
+
+            // Restore the next board constraint
+            nextLocalBoardRow = prevNextRow;
+            nextLocalBoardCol = prevNextCol;
+
+            // Restore the global winner state AS IT WAS BEFORE the move was made
+            this.globalWinner = previousGlobalWinner;
+
+            // We might need to recalculate global winner if the local board's status *truly* changed state upon undo
+            // E.g. undoing a move caused a local win/draw to revert to ongoing.
+            // Recalculating is safer.
+            recalcGlobalWinner();
+
+        } else {
+            System.err.println("UndoMove Error: Invalid local board coordinates derived from global " + globalRow + "," + globalCol);
+        }
+    }
+
+    // Checks if a move is valid according to game rules
+    public boolean isValidMove(int globalRow, int globalCol) {
+        if (globalRow < 0 || globalRow > 8 || globalCol < 0 || globalCol > 8) return false; // Basic bounds
+        if (globalWinner != Board.EMPTY) return false; // Game already over
 
         int localBoardRow = globalRow / 3;
         int localBoardCol = globalCol / 3;
-        int localRow = globalRow % 3;
-        int localCol = globalCol % 3;
+        int cellRow = globalRow % 3;
+        int cellCol = globalCol % 3;
 
         Board targetBoard = localBoards[localBoardRow][localBoardCol];
 
-        // Check if the target local board is already won or full
-        if (targetBoard.isTerminal()) {
-            return false;
-        }
+        // Check if the target local board is already finished
+        if (targetBoard.isTerminal()) return false;
 
-        // Check if the cell itself is empty
-        if (!targetBoard.isCellEmpty(localRow, localCol)) {
-            return false;
-        }
+        // Check if the cell within the local board is empty
+        if (!targetBoard.isCellEmpty(cellRow, cellCol)) return false;
 
-        // Check if the move is in the required local board [cite: 15, 16, 19]
-        if (nextLocalBoardRow == -1) {
-            return true; // Can play anywhere open
-        } else {
-            return localBoardRow == nextLocalBoardRow && localBoardCol == nextLocalBoardCol;
-        }
-    }
-
-    // Helper to check if a specific local board is playable (not won or full)
-    private boolean isPlayableBoard(int boardRow, int boardCol) {
-        return !localBoards[boardRow][boardCol].isTerminal();
-    }
-
-
-    // Get all valid moves for the current player
-    public List<int[]> getAvailableMoves() {
-        List<int[]> moves = new ArrayList<>();
-        if (globalWinner != Board.EMPTY) return moves; // No moves if game is over
-
-        if (nextLocalBoardRow == -1) {
-            // Play anywhere is allowed [cite: 19]
-            for (int br = 0; br < 3; br++) {
-                for (int bc = 0; bc < 3; bc++) {
-                    if (isPlayableBoard(br, bc)) {
-                        Board board = localBoards[br][bc];
-                        List<int[]> localMoves = board.getAvailableMoves();
-                        for(int[] localMove : localMoves) {
-                            moves.add(new int[]{br * 3 + localMove[0], bc * 3 + localMove[1]});
-                        }
-                    }
-                }
-            }
-        } else {
-            // Must play in the specified board [cite: 15, 16]
-            if (isPlayableBoard(nextLocalBoardRow, nextLocalBoardCol)) {
-                Board board = localBoards[nextLocalBoardRow][nextLocalBoardCol];
-                List<int[]> localMoves = board.getAvailableMoves();
-                for(int[] localMove : localMoves) {
-                    moves.add(new int[]{nextLocalBoardRow * 3 + localMove[0], nextLocalBoardCol * 3 + localMove[1]});
-                }
-            } else {
-                // This case implies the required board became terminal *after* the opponent's move
-                // which directed play here. The rule says play anywhere open. [cite: 19]
-                // So, we fall back to the "play anywhere" logic.
-                // Note: The `makeMove` logic already handles setting nextLocalBoardRow/Col to -1
-                // if the *target* of the *next* move is terminal. This handles the case where
-                // the required board is *already* terminal when getAvailableMoves is called.
-                for (int br = 0; br < 3; br++) {
-                    for (int bc = 0; bc < 3; bc++) {
-                        if (isPlayableBoard(br, bc)) {
-                            Board board = localBoards[br][bc];
-                            List<int[]> localMoves = board.getAvailableMoves();
-                            for(int[] localMove : localMoves) {
-                                moves.add(new int[]{br * 3 + localMove[0], bc * 3 + localMove[1]});
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return moves;
-    }
-
-
-    // Check for a win condition on the global board [cite: 11]
-    private void checkGlobalWin() {
-        if (globalWinner != Board.EMPTY) return;
-
-        int[][] globalCells = new int[3][3];
-        for(int i=0; i<3; i++){
-            for(int j=0; j<3; j++){
-                globalCells[i][j] = localBoards[i][j].getWinner();
+        // Check if the move is in the required local board (or if play anywhere is allowed)
+        if (nextLocalBoardRow != -1) { // Must play in a specific board
+            if (localBoardRow != nextLocalBoardRow || localBoardCol != nextLocalBoardCol) {
+                return false; // Tried to play in the wrong board
             }
         }
 
-        // Check rows and columns
+        return true; // All checks passed
+    }
+
+    // Recalculates the global winner based on local board winners
+    private void recalcGlobalWinner() {
+        // Check rows
         for (int i = 0; i < 3; i++) {
-            if (globalCells[i][0] != Board.EMPTY && globalCells[i][0] == globalCells[i][1] && globalCells[i][1] == globalCells[i][2]) {
-                globalWinner = globalCells[i][0];
-                return;
-            }
-            if (globalCells[0][i] != Board.EMPTY && globalCells[0][i] == globalCells[1][i] && globalCells[1][i] == globalCells[2][i]) {
-                globalWinner = globalCells[0][i];
-                return;
+            // Check only if first cell is a player win (ignore EMPTY/DRAW for win lines)
+            int firstWinner = localBoards[i][0].getWinner();
+            if (firstWinner != Board.EMPTY && firstWinner != Board.DRAW) {
+                if (firstWinner == localBoards[i][1].getWinner() && firstWinner == localBoards[i][2].getWinner()) {
+                    globalWinner = firstWinner;
+                    return;
+                }
             }
         }
-
+        // Check columns
+        for (int i = 0; i < 3; i++) {
+            int firstWinner = localBoards[0][i].getWinner();
+            if (firstWinner != Board.EMPTY && firstWinner != Board.DRAW) {
+                if (firstWinner == localBoards[1][i].getWinner() && firstWinner == localBoards[2][i].getWinner()) {
+                    globalWinner = firstWinner;
+                    return;
+                }
+            }
+        }
         // Check diagonals
-        if (globalCells[0][0] != Board.EMPTY && globalCells[0][0] == globalCells[1][1] && globalCells[1][1] == globalCells[2][2]) {
-            globalWinner = globalCells[0][0];
-            return;
+        int diag1Winner = localBoards[0][0].getWinner();
+        if (diag1Winner != Board.EMPTY && diag1Winner != Board.DRAW) {
+            if (diag1Winner == localBoards[1][1].getWinner() && diag1Winner == localBoards[2][2].getWinner()) {
+                globalWinner = diag1Winner;
+                return;
+            }
         }
-        if (globalCells[0][2] != Board.EMPTY && globalCells[0][2] == globalCells[1][1] && globalCells[1][1] == globalCells[2][0]) {
-            globalWinner = globalCells[0][2];
-            return;
+        int diag2Winner = localBoards[0][2].getWinner();
+        if (diag2Winner != Board.EMPTY && diag2Winner != Board.DRAW) {
+            if (diag2Winner == localBoards[1][1].getWinner() && diag2Winner == localBoards[2][0].getWinner()) {
+                globalWinner = diag2Winner;
+                return;
+            }
         }
 
-        // Check for global draw (all local boards terminal, no global winner)
-        boolean allTerminal = true;
+        // No player won, check for draw (all local boards are terminal)
+        boolean allBoardsTerminal = true;
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
                 if (!localBoards[i][j].isTerminal()) {
-                    allTerminal = false;
+                    allBoardsTerminal = false;
                     break;
                 }
             }
-            if(!allTerminal) break;
-        }
-        if(allTerminal && globalWinner == Board.EMPTY) {
-            // Consider this a draw state for evaluation, maybe assign a specific DRAW indicator if needed
-            // For now, no explicit globalWinner change, relies on evaluation recognizing stalemate.
+            if (!allBoardsTerminal) break;
         }
 
+        if (allBoardsTerminal) {
+            globalWinner = Board.DRAW; // All boards finished, no winner = Draw
+            return;
+        }
+
+        // If not won and not draw, game is ongoing
+        globalWinner = Board.EMPTY;
     }
 
+
     public int getGlobalWinner() {
-        checkGlobalWin(); // Ensure status is up-to-date
+        // Consider recalculating here if you suspect state issues, but should be ok if make/undo call it
+        // recalcGlobalWinner();
         return globalWinner;
     }
 
     public boolean isGameOver() {
-        return getGlobalWinner() != Board.EMPTY || getAvailableMoves().isEmpty();
+        // Recalculate just to be absolutely sure before checking
+        // This might be slightly inefficient but safer
+        recalcGlobalWinner();
+        // Game is over if there's a winner/draw OR no moves left
+        return globalWinner != Board.EMPTY || getAvailableMoves().isEmpty();
+    }
+
+    // Generates all valid moves for the current player
+    public List<int[]> getAvailableMoves() {
+        List<int[]> moves = new ArrayList<>();
+        if (globalWinner != Board.EMPTY) {
+            return moves; // Game finished
+        }
+
+        if (nextLocalBoardRow == -1) {
+            // Play anywhere is allowed
+            for (int br = 0; br < 3; br++) {
+                for (int bc = 0; bc < 3; bc++) {
+                    Board currentLocalBoard = localBoards[br][bc];
+                    if (!currentLocalBoard.isTerminal()) {
+                        List<int[]> localMoves = currentLocalBoard.getAvailableMoves();
+                        for (int[] m : localMoves) {
+                            // Convert local coords (m[0], m[1]) to global
+                            moves.add(new int[]{br * 3 + m[0], bc * 3 + m[1]});
+                        }
+                    }
+                }
+            }
+        } else {
+            // Must play in a specific board
+            if (nextLocalBoardRow >= 0 && nextLocalBoardRow < 3 && nextLocalBoardCol >= 0 && nextLocalBoardCol < 3) {
+                Board targetLocalBoard = localBoards[nextLocalBoardRow][nextLocalBoardCol];
+                // It's possible the target board *just* became terminal due to the opponent's move
+                // If it IS terminal, the player should be allowed to play anywhere.
+                if (targetLocalBoard.isTerminal()) {
+                    // Fallback to play anywhere
+                    // System.out.println("DEBUG: Target board ("+nextLocalBoardRow+","+nextLocalBoardCol+") is terminal, falling back to play anywhere.");
+                    for (int br = 0; br < 3; br++) {
+                        for (int bc = 0; bc < 3; bc++) {
+                            Board currentLocalBoard = localBoards[br][bc];
+                            if (!currentLocalBoard.isTerminal()) {
+                                List<int[]> localMoves = currentLocalBoard.getAvailableMoves();
+                                for (int[] m : localMoves) {
+                                    moves.add(new int[]{br * 3 + m[0], bc * 3 + m[1]});
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Play in the target board
+                    List<int[]> localMoves = targetLocalBoard.getAvailableMoves();
+                    for (int[] m : localMoves) {
+                        moves.add(new int[]{nextLocalBoardRow * 3 + m[0], nextLocalBoardCol * 3 + m[1]});
+                    }
+                }
+            } else {
+                // This case should ideally not happen if nextLocalBoardRow/Col are managed correctly
+                System.err.println("Warning: Invalid nextLocalBoard coords ("+nextLocalBoardRow+","+nextLocalBoardCol+"). Defaulting to play anywhere.");
+                for (int br = 0; br < 3; br++) { // Play anywhere logic duplicated
+                    for (int bc = 0; bc < 3; bc++) {
+                        Board currentLocalBoard = localBoards[br][bc];
+                        if (!currentLocalBoard.isTerminal()) {
+                            List<int[]> localMoves = currentLocalBoard.getAvailableMoves();
+                            for (int[] m : localMoves) {
+                                moves.add(new int[]{br * 3 + m[0], bc * 3 + m[1]});
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Debugging: Log if no moves are found but game isn't over
+        // if (moves.isEmpty() && globalWinner == Board.EMPTY) {
+        //     System.out.println("*******************************************");
+        //     System.out.println("WARNING: getAvailableMoves is empty but game not over!");
+        //     System.out.println("Next Board: " + nextLocalBoardRow + "," + nextLocalBoardCol);
+        //     System.out.println("Board state:\n" + this);
+        //     System.out.println("*******************************************");
+        // }
+        return moves;
     }
 
 
-    // Evaluate the entire giant board state [cite: 46]
-    // Positive favors X, negative favors O
+    // Sets the next required board based on the opponent's last move's local coords
+    public void setNextBoardFromLastMove(int opponentMoveLocalRow, int opponentMoveLocalCol) {
+        if (opponentMoveLocalRow < 0 || opponentMoveLocalRow > 2 || opponentMoveLocalCol < 0 || opponentMoveLocalCol > 2) {
+            // Invalid coords likely means play anywhere (e.g., first move)
+            nextLocalBoardRow = -1;
+            nextLocalBoardCol = -1;
+        } else {
+            Board target = localBoards[opponentMoveLocalRow][opponentMoveLocalCol];
+            if (target.isTerminal()) { // If the target board is finished
+                nextLocalBoardRow = -1; // Play anywhere
+                nextLocalBoardCol = -1;
+            } else {
+                nextLocalBoardRow = opponentMoveLocalRow; // Must play in this board
+                nextLocalBoardCol = opponentMoveLocalCol;
+            }
+        }
+    }
+
+    // --- Evaluation ---
     public int evaluate(int player) {
-        checkGlobalWin();
+        // Recalculate winner just in case state is messy during search
+        recalcGlobalWinner();
         int opponent = (player == Board.PLAYER_X) ? Board.PLAYER_O : Board.PLAYER_X;
 
-        if (globalWinner == player) {
-            return 10000; // Very high score for winning globally
-        }
-        if (globalWinner == opponent) {
-            return -10000; // Very low score for opponent winning globally
-        }
-        if (isGameOver() && globalWinner == Board.EMPTY) {
-            return 0; // Draw
-        }
-
+        // 1. Check for immediate win/loss/draw globally
+        if (globalWinner == player) return 100000; // Strong weight for global win
+        if (globalWinner == opponent) return -100000; // Strong weight for global loss
+        if (globalWinner == Board.DRAW) return 0;      // Neutral for draw
 
         int totalScore = 0;
 
-        // Evaluate based on global board potential (similar to local board eval but using local winners)
-        int[][] globalCells = new int[3][3];
-        for(int i=0; i<3; i++){
-            for(int j=0; j<3; j++){
-                globalCells[i][j] = localBoards[i][j].getWinner();
-            }
-        }
-        // Factor of 100 emphasizes global board wins over local heuristics
-        totalScore += evaluateGlobalLine(globalCells, 0, 0, 0, 1, 0, 2, player) * 100;
-        totalScore += evaluateGlobalLine(globalCells, 1, 0, 1, 1, 1, 2, player) * 100;
-        totalScore += evaluateGlobalLine(globalCells, 2, 0, 2, 1, 2, 2, player) * 100;
-        totalScore += evaluateGlobalLine(globalCells, 0, 0, 1, 0, 2, 0, player) * 100;
-        totalScore += evaluateGlobalLine(globalCells, 0, 1, 1, 1, 2, 1, player) * 100;
-        totalScore += evaluateGlobalLine(globalCells, 0, 2, 1, 2, 2, 2, player) * 100;
-        totalScore += evaluateGlobalLine(globalCells, 0, 0, 1, 1, 2, 2, player) * 100;
-        totalScore += evaluateGlobalLine(globalCells, 0, 2, 1, 1, 2, 0, player) * 100;
+        // 2. Evaluate global board based on local winners (heuristic)
+        totalScore += evaluateGlobalBoardHeuristic(player) * 100; // Weight global patterns
 
-
-        // Add scores from individual local boards
+        // 3. Evaluate individual local boards
+        int localBoardTotalScore = 0;
+        int playerLocalWins = 0;
+        int opponentLocalWins = 0;
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
-                totalScore += localBoards[i][j].evaluate(player);
+                int localEval = localBoards[i][j].evaluate(player);
+                localBoardTotalScore += localEval; // Sum local evaluations
+
+                // Bonus for controlling center local board
+                if (i == 1 && j == 1 && localEval > 0) {
+                    totalScore += 10; // Small bonus for center control heuristic
+                }
+
+                // Count local wins for heuristic
+                int localWinner = localBoards[i][j].getWinner();
+                if (localWinner == player) playerLocalWins++;
+                else if (localWinner == opponent) opponentLocalWins++;
             }
         }
+        totalScore += localBoardTotalScore; // Add sum of local scores
+
+        // 4. Add bonus for number of local boards won vs lost
+        totalScore += (playerLocalWins - opponentLocalWins) * 50; // Bonus for each net local win
+
+        // 5. Consider the next board constraint (optional but potentially strong)
+        // If nextLocalBoardRow != -1, evaluate the state of that specific board
+        // Add bonus if it's advantageous for player, penalty if advantageous for opponent.
+        // This requires looking ahead slightly within the evaluation.
+        // Example: if(nextLocalBoardRow != -1) { totalScore += localBoards[nextLocalBoardRow][nextLocalBoardCol].evaluate(player) * 0.5; }
+
 
         return totalScore;
     }
 
-    // Helper for evaluating a line on the global board based on local winners
-    private int evaluateGlobalLine(int[][] globalCells, int r1, int c1, int r2, int c2, int r3, int c3, int player) {
+    // Heuristic evaluation of the global 3x3 grid based on local winners
+    private int evaluateGlobalBoardHeuristic(int player) {
         int score = 0;
         int opponent = (player == Board.PLAYER_X) ? Board.PLAYER_O : Board.PLAYER_X;
-
-        int cell1 = globalCells[r1][c1];
-        int cell2 = globalCells[r2][c2];
-        int cell3 = globalCells[r3][c3];
-
-        int playerCount = 0;
-        int opponentCount = 0;
-        if (cell1 == player) playerCount++; else if (cell1 == opponent) opponentCount++;
-        if (cell2 == player) playerCount++; else if (cell2 == opponent) opponentCount++;
-        if (cell3 == player) playerCount++; else if (cell3 == opponent) opponentCount++;
-
-        // Assign score based on line state (higher magnitude than local)
-        if (playerCount == 3) {
-            score = 1000; // Should be caught by getGlobalWinner
-        } else if (playerCount == 2 && opponentCount == 0) {
-            score = 100; // Two local boards won, potential global win
-        } else if (playerCount == 1 && opponentCount == 0) {
-            score = 10;  // One local board won
-        } else if (opponentCount == 3) {
-            score = -1000; // Should be caught by getGlobalWinner
-        } else if (opponentCount == 2 && playerCount == 0) {
-            score = -100; // Opponent won two local boards
-        } else if (opponentCount == 1 && playerCount == 0) {
-            score = -10; // Opponent won one local board
+        int[][] winnersGrid = new int[3][3];
+        for(int i=0; i<3; i++) {
+            for(int j=0; j<3; j++) {
+                winnersGrid[i][j] = localBoards[i][j].getWinner();
+            }
         }
 
+        // Evaluate lines based on who won the local boards
+        score += evaluateGlobalLine(winnersGrid, 0, 0, 0, 1, 0, 2, player); // Rows
+        score += evaluateGlobalLine(winnersGrid, 1, 0, 1, 1, 1, 2, player);
+        score += evaluateGlobalLine(winnersGrid, 2, 0, 2, 1, 2, 2, player);
+        score += evaluateGlobalLine(winnersGrid, 0, 0, 1, 0, 2, 0, player); // Cols
+        score += evaluateGlobalLine(winnersGrid, 0, 1, 1, 1, 2, 1, player);
+        score += evaluateGlobalLine(winnersGrid, 0, 2, 1, 2, 2, 2, player);
+        score += evaluateGlobalLine(winnersGrid, 0, 0, 1, 1, 2, 2, player); // Diags
+        score += evaluateGlobalLine(winnersGrid, 0, 2, 1, 1, 2, 0, player);
         return score;
     }
 
-    // Sets the next board based on the last move's local coordinates
-    public void setNextBoardFromLastMove(int localRow, int localCol) {
-        if (localRow < 0 || localRow > 2 || localCol < 0 || localCol > 2) {
-            // Invalid coordinates, implies start of game or error, allow play anywhere
-            this.nextLocalBoardRow = -1;
-            this.nextLocalBoardCol = -1;
-        } else {
-            Board target = localBoards[localRow][localCol];
-            if (target.isTerminal()) {
-                this.nextLocalBoardRow = -1;
-                this.nextLocalBoardCol = -1;
-            } else {
-                this.nextLocalBoardRow = localRow;
-                this.nextLocalBoardCol = localCol;
-            }
-        }
-        System.out.println("Next board to play set to: " + (nextLocalBoardRow == -1 ? "Any" : nextLocalBoardRow + "," + nextLocalBoardCol));
+    // Helper for evaluateGlobalBoardHeuristic
+    private int evaluateGlobalLine(int[][] winnersGrid, int r1, int c1, int r2, int c2, int r3, int c3, int player) {
+        int score = 0;
+        int opponent = (player == Board.PLAYER_X) ? Board.PLAYER_O : Board.PLAYER_X;
+
+        int playerCount = 0;
+        int opponentCount = 0;
+        // Check cell 1
+        if (winnersGrid[r1][c1] == player) playerCount++;
+        else if (winnersGrid[r1][c1] == opponent) opponentCount++;
+        // Check cell 2
+        if (winnersGrid[r2][c2] == player) playerCount++;
+        else if (winnersGrid[r2][c2] == opponent) opponentCount++;
+        // Check cell 3
+        if (winnersGrid[r3][c3] == player) playerCount++;
+        else if (winnersGrid[r3][c3] == opponent) opponentCount++;
+
+        // Give score based on line composition (ignoring DRAW/EMPTY unless checking for blocks)
+        if (playerCount == 3) score = 1000; // Should be caught by globalWin, but good heuristic
+        else if (playerCount == 2 && opponentCount == 0) score = 100; // Two local wins in a line
+        else if (playerCount == 1 && opponentCount == 0) score = 10;  // One local win, potential
+        else if (opponentCount == 3) score = -1000;
+        else if (opponentCount == 2 && playerCount == 0) score = -100;
+        else if (opponentCount == 1 && playerCount == 0) score = -10;
+        return score;
     }
 
+
+    // Getters
     public int getNextLocalBoardRow() { return nextLocalBoardRow; }
     public int getNextLocalBoardCol() { return nextLocalBoardCol; }
 
-
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder("Giant Board (Next: " +
-                (nextLocalBoardRow == -1 ? "Any" : nextLocalBoardRow + "," + nextLocalBoardCol) +
-                " Winner: " + globalWinner + ")\n");
+        StringBuilder sb = new StringBuilder("Giant Board (Next: " + (nextLocalBoardRow == -1 ? "Any" : nextLocalBoardRow + "," + nextLocalBoardCol) + " Winner: " + globalWinner + ")\n");
         for (int big_r = 0; big_r < 3; big_r++) {
             for (int r = 0; r < 3; r++) {
                 for (int big_c = 0; big_c < 3; big_c++) {
-                    for (int c = 0; c < 3; c++) {
-                        int val = localBoards[big_r][big_c].getCell(r, c);
-                        switch (val) {
-                            case Board.PLAYER_X: sb.append("X"); break;
-                            case Board.PLAYER_O: sb.append("O"); break;
-                            default:       sb.append("."); break;
-                        }
-                    }
-                    sb.append( (big_c < 2) ? " | " : ""); // Separator between local boards
+                    sb.append(localBoards[big_r][big_c].toString().split("\n")[r]); // Append row 'r' of local board
+                    sb.append(big_c < 2 ? " | " : "");
                 }
                 sb.append("\n");
             }
-            if (big_r < 2) {
-                sb.append("---------------------\n"); // Separator between rows of local boards
-            }
+            if (big_r < 2) sb.append("---------------------\n");
         }
         return sb.toString();
     }
