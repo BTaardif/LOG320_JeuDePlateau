@@ -12,7 +12,6 @@ class Client {
         String[] numbers = {"1", "2", "3", "4" , "5", "6" , "7", "8", "9"};
 
         GiantBoard giantBoard = new GiantBoard();
-        CPUGiantPlayer cpu = null;
         CPUPlayer2 CPUPlayer2 = null;
         int piece = 4;
 
@@ -29,17 +28,18 @@ class Client {
                 cmd = (char)input.read();
                 System.out.println(cmd);
 
-                // Debut de la partie en joueur blanc (0)
+                // Debut de la partie en joueur rouge (X)
                 if(cmd == '1'){
                     byte[] aBuffer = new byte[1024];
 
+                    System.out.println("Communication serveur : " + cmd);
                     int size = input.available();
                     //System.out.println("size " + size);
                     input.read(aBuffer,0,size);
                     String s = new String(aBuffer).trim();
-                    giantBoard.updateBoard(s);
+                    
                     piece = 4;
-                    cpu = new CPUGiantPlayer(piece, 2);
+                   
                     System.out.println(s);
                     String[] boardValues;
                     boardValues = s.split(" ");
@@ -54,7 +54,7 @@ class Client {
                     }
 
                     System.out.println("Nouvelle partie! Vous jouer blanc, entrez votre premier coup : ");
-                    String move = pickMove(giantBoard, cpu, piece);
+                    String move = "";
                     System.out.println(move);
                     output.write(move.getBytes(),0,move.length());
                     output.flush();
@@ -64,17 +64,19 @@ class Client {
                 if(cmd == '2'){
                     System.out.println("Nouvelle partie! Vous jouer noir, attendez le coup des blancs");
                     byte[] aBuffer = new byte[1024];
+                    System.out.println("Communication serveur : " + cmd);
 
                     int size = input.available();
                     //System.out.println("size " + size);
                     input.read(aBuffer,0,size);
+                    System.out.println("size :" + size);
                     String s = new String(aBuffer).trim();
                     System.out.println(s);
                     String[] boardValues;
                     boardValues = s.split(" ");
                     int x=0,y=0;
                     for(int i=0; i<boardValues.length;i++){
-                        board[x][y] = Integer.parseInt(boardValues[i]);
+                        //board[x][y] = Integer.parseInt(boardValues[i]);
                         x++;
                         if(x == 9){
                             x = 0;
@@ -82,40 +84,48 @@ class Client {
                         }
                     }
 
-                    giantBoard.updateBoard(s);
+                   
                     piece = 2;
-                    cpu = new CPUGiantPlayer(piece, 2);
+                    
+                    //CPUPlayer2 = new CPUPlayer2(piece);
                 }
 
 
                 // Le serveur demande le prochain coup
                 // Le message contient aussi le dernier coup joue.
                 if(cmd == '3'){
+                    piece = 4;
                     byte[] aBuffer = new byte[16];
+                    
 
                     int size = input.available();
                     System.out.println("size :" + size);
                     input.read(aBuffer,0,size);
 
                     String s = new String(aBuffer);
+                    System.out.println("Communication serveur : " + cmd);
                     System.out.println("Dernier coup :"+ s);
                     System.out.println("Entrez votre coup : ");
+                    
+                    
+                    appliquerChangementGtBoard(giantBoard, s, piece);
 
-                    giantBoard.afficherTiLocalBoard();
-                    humanPlay(giantBoard, s, piece);
-                    giantBoard.afficherTiLocalBoard();
-                    //play(giantBoard, s, piece);
                     
                     //play() -> cpu
-                    String move = pickMove(giantBoard, cpu, piece);
-                    output.write(move.getBytes(),0,move.length());
+                    piece = 2;
+                    CPUPlayer2 = new CPUPlayer2(piece);
+                    Move move = CPUPlayer2.play(giantBoard, s);
+                    String move_ai = move.getCase_id();
+                    appliquerChangementGtBoard(giantBoard, move_ai , piece);
+                    //giantBoard.afficherTiLocalBoard();
+                    output.write(move_ai.getBytes(), 0, move_ai.length());
                     output.flush();
 
                 }
                 // Le dernier coup est invalide
                 if(cmd == '4'){
                     System.out.println("Coup invalide, entrez un nouveau coup : ");
-                    String move = pickMove(giantBoard, cpu, piece);
+                    String move = "";
                     output.write(move.getBytes(),0,move.length());
                     output.flush();
 
@@ -139,31 +149,21 @@ class Client {
         }
     }
 
-    private static void humanPlay(GiantBoard giantBoard, String data, int piece){
-        giantBoard.getMiniTiLocalBoard(data, piece);
-
+    private static void appliquerChangementGtBoard(GiantBoard giantBoard, String data, int piece){
+        giantBoard.setGiantBoard(data,piece);
     }
 
-    private static void play(GiantBoard giantBoard, String data, int piece) {
-        if(data.length() < 2) {
-            return;
-        }
-        int row = data.charAt(1) - 'A';
-        int col = data.charAt(2) - '1';
-        int opp = (piece == 4 ? 2 : 4);
-        if(row >= 0 && row < 9 && col >= 0 && col < 9) {
-            giantBoard.playMove(row, col, opp);
-        }
-    }
 
+
+    /* 
     private static String pickMove(GiantBoard giantBoard, CPUGiantPlayer cpu, int piece) {
         Move move = cpu.getMove(giantBoard);
         if(move == null) {
             return "A0";
         }
-        giantBoard.playMove(move.getRow(), move.getCol(), piece);
+        //giantBoard.playMove(move.getRow(), move.getCol(), piece);
         return convertMove(move.getRow(), move.getCol());
-    }
+    }*/
 
     private static String convertMove(int row, int col) {
         String letters = "ABCDEFGHI";
