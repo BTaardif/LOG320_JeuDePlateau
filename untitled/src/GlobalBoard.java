@@ -154,6 +154,10 @@ public class GlobalBoard {
         return moves;
     }
 
+    public LocalBoard getLocalBoard(int i, int j) {
+        return boards[i][j];
+    }
+
     // For debugging: returns a string representation of the global board.
     @Override
     public String toString() {
