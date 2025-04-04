@@ -1,11 +1,13 @@
+
 import java.util.*;
 
 public class CPUPlayer2 {
+
     private Mark myMark, opponentMark;
     private static final long TIME_LIMIT_MS = 2900;
     private long startTime;
-    private Move bestMoveOverall;
     private boolean timeUp;
+    private Move bestMoveOverall;
     private List<Move> validMoves;
 
     public CPUPlayer2(int piece) {
@@ -13,70 +15,68 @@ public class CPUPlayer2 {
         this.opponentMark = (piece == 2) ? Mark.X : Mark.O;
     }
 
-    private double evaluateQuickMove(GiantBoard board, Move move) {
-        GiantBoard nextBoard = board.clone();
-        nextBoard.applyMove(nextBoard, move);
-        return evaluateBoard(nextBoard);
-    }
-    
-    
     public Move play(GiantBoard board, String lastOpponentMove) {
-        this.startTime = System.currentTimeMillis();
-        this.timeUp = false;
-        this.bestMoveOverall = null;
-        
+        startTime = System.currentTimeMillis();
+        timeUp = false;
+        bestMoveOverall = null;
+
         String targetBoardIndex = determineTargetBoard(board, lastOpponentMove);
         validMoves = getValidMoves(board, targetBoardIndex, myMark);
-        
-        if (!validMoves.isEmpty()) {
-            validMoves.sort(Comparator.comparingDouble(move -> evaluateQuickMove(board, move)));
-            bestMoveOverall = validMoves.get(validMoves.size() - 1);
-        }
-        
 
+        if (!validMoves.isEmpty()) {
+            bestMoveOverall = validMoves.get(validMoves.size() - 1); // Initial quick selection
+        }
+
+        // Search for the best move with Minimax and Alpha-Beta pruning
         for (int depth = 1; !timeUp; depth++) {
-            try {
-                Move bestMoveAtThisDepth = findBestMove(board, targetBoardIndex, depth);
-                if (!timeUp && bestMoveAtThisDepth != null) {
-                    bestMoveOverall = bestMoveAtThisDepth;
-                }
-                if (System.currentTimeMillis() - startTime > TIME_LIMIT_MS) {
-                    timeUp = true;
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                break;
+            Move bestMoveAtThisDepth = findBestMove(board, targetBoardIndex, depth);
+            if (!timeUp && bestMoveAtThisDepth != null) {
+                bestMoveOverall = bestMoveAtThisDepth;
+            }
+            if (System.currentTimeMillis() - startTime > TIME_LIMIT_MS) {
+                timeUp = true;
             }
         }
         return bestMoveOverall;
     }
 
-
-
-
-
     private String determineTargetBoard(GiantBoard board, String lastOpponentMove) {
         if (lastOpponentMove == null) return "-1";
-        //LocalBoard targetLocalBoard =  board.getPlateaux().get(lastOpponentMove.trim());
-        String targetString =  board.rechercheMiniBoard(lastOpponentMove);
+
+        String targetString = board.rechercheMiniBoard(lastOpponentMove);
         LocalBoard targetLocalBoard = board.getPlateaux().get(targetString);
-        
-        return (targetLocalBoard == null || 
-        targetLocalBoard.isFull() || 
-        targetLocalBoard.isWon(myMark) || 
-        targetLocalBoard.isWon(opponentMark)) ? "-1" : targetString;
+
+        return (targetLocalBoard == null || targetLocalBoard.isFull() || 
+                targetLocalBoard.isWon(myMark) || targetLocalBoard.isWon(opponentMark)) ? "-1" : targetString;
     }
 
-    Move findBestMove(GiantBoard board, String targetBoardIndex, int maxDepth) {
+    private List<Move> getValidMoves(GiantBoard board, String targetBoardIndex, Mark currentMark) {
+        List<Move> moves = new ArrayList<>();
+        if (targetBoardIndex.equals("-1")) {  
+            board.getPlateaux().values().forEach(lb -> {
+                if (!lb.isFull() && lb.getWinner() == Mark.EMPTY) {
+                    moves.addAll(lb.getAvailableMoves(currentMark, lb.getLocalID()));
+                }
+            });
+        } else {
+            LocalBoard lb = board.getPlateaux().get(targetBoardIndex);
+            if (lb != null && !lb.isFull() && lb.getWinner() == Mark.EMPTY) {
+                moves.addAll(lb.getAvailableMoves(currentMark, lb.getLocalID()));
+            }
+        }
+        return moves;
+    }
+
+    private Move findBestMove(GiantBoard board, String targetBoardIndex, int maxDepth) {
         Move bestMove = null;
         double bestScore = Double.NEGATIVE_INFINITY;
         double alpha = Double.NEGATIVE_INFINITY, beta = Double.POSITIVE_INFINITY;
-        
+
         for (Move move : validMoves) {
             if (timeUp) break;
             GiantBoard nextBoard = board.clone();
-            nextBoard.applyMove(nextBoard,move);
-            double score = minimax(nextBoard, maxDepth - 1, alpha, beta, false, Integer.toString(move.getLocalBoardX() * 3 + move.getLocalBoardY()));
+            nextBoard.applyMove(nextBoard, move);
+            double score = minimax(nextBoard, maxDepth - 1, alpha, beta, false, Integer.toString(move.getLocalBoardY() + move.getLocalBoardX()));
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = move;
@@ -97,7 +97,7 @@ public class CPUPlayer2 {
         for (Move move : validMoves) {
             if (timeUp) break;
             GiantBoard nextBoard = board.clone();
-            nextBoard.applyMove(nextBoard,move);
+            nextBoard.applyMove(nextBoard, move);
             double score = minimax(nextBoard, depth - 1, alpha, beta, !isMaximizing, Integer.toString(move.getLocalBoardX() * 3 + move.getLocalBoardY()));
             if (isMaximizing) {
                 bestScore = Math.max(bestScore, score);
@@ -111,101 +111,53 @@ public class CPUPlayer2 {
         return bestScore;
     }
 
-    //private double evaluateBoard(GiantBoard board) {
-      //  return Math.random(); // Remplace avec une vraie heuristique
-    //}
-
     private double evaluateBoard(GiantBoard board) {
         double score = 0;
-    
+
         for (LocalBoard lb : board.getPlateaux().values()) {
             Mark winner = lb.getWinner();
             if (winner == myMark) {
-                score += 100; // Un `LocalBoard` gagné vaut +100
+                score += 100; // A won `LocalBoard` adds +100
             } else if (winner == opponentMark) {
-                score -= 100; // Un `LocalBoard` perdu vaut -100
+                score -= 100; // A lost `LocalBoard` subtracts -100
             } else {
                 score += evaluateLocalBoard(lb);
             }
         }
-        
+
         return score;
     }
-    
-    // Évaluation d’un `LocalBoard` non terminé
+
     private double evaluateLocalBoard(LocalBoard lb) {
-        double localScore = 0;
-        Case[][] board = lb.getBoardCases(); // Suppose que `getBoard()` retourne un tableau 3x3
-    
+        double score = 0;
+        Case[][] board = lb.getBoardCases(); // Assuming `getBoard()` returns a 3x3 grid
+
         for (int i = 0; i < 3; i++) {
-            localScore += evaluateLine(board[i][0].getCMark(), board[i][1].getCMark(), board[i][2].getCMark()); // Ligne
-            localScore += evaluateLine(board[0][i].getCMark(), board[1][i].getCMark(), board[2][i].getCMark()); // Colonne
+            score += evaluateLine(board[i][0].getCMark(), board[i][1].getCMark(), board[i][2].getCMark()); // Row
+            score += evaluateLine(board[0][i].getCMark(), board[1][i].getCMark(), board[2][i].getCMark()); // Column
         }
-        localScore += evaluateLine(board[0][0].getCMark(), board[1][1].getCMark(), board[2][2].getCMark()); // Diagonale \
-        localScore += evaluateLine(board[0][2].getCMark(), board[1][1].getCMark(), board[2][0].getCMark()); // Diagonale /
-    
-        return localScore;
+        score += evaluateLine(board[0][0].getCMark(), board[1][1].getCMark(), board[2][2].getCMark()); // Diagonal \
+        score += evaluateLine(board[0][2].getCMark(), board[1][1].getCMark(), board[2][0].getCMark()); // Diagonal /
+
+        return score;
     }
-    
-    // Évalue une ligne, colonne ou diagonale
-    
+
     private double evaluateLine(Mark a, Mark b, Mark c) {
         int cpuCount = 0, opponentCount = 0;
-    
+
         if (a == myMark) cpuCount++;
         if (b == myMark) cpuCount++;
         if (c == myMark) cpuCount++;
-    
+
         if (a == opponentMark) opponentCount++;
         if (b == opponentMark) opponentCount++;
         if (c == opponentMark) opponentCount++;
-    
-        if (cpuCount == 3) return 100; // Victoire
-        if (opponentCount == 3) return -100; // Défaite
-        if (cpuCount == 2 && opponentCount == 0) return 10; // Deux symboles alignés
-        if (opponentCount == 2 && cpuCount == 0) return -10; // Danger imminent
-    
+
+        if (cpuCount == 3) return 100; // Win
+        if (opponentCount == 3) return -100; // Loss
+        if (cpuCount == 2 && opponentCount == 0) return 10; // Two marks aligned
+        if (opponentCount == 2 && cpuCount == 0) return -10; // Imminent danger
+
         return 0;
     }
-    
-
-    /* 
-    private double evaluateLine(Mark a, Mark b, Mark c) {
-        int cpuCount = 0, opponentCount = 0;
-        int emptyCount = 0;
-    
-        Mark[] marks = {a, b, c};
-        for (Mark mark : marks) {
-            if (mark == myMark) cpuCount++;
-            else if (mark == opponentMark) opponentCount++;
-            else emptyCount++;
-        }
-    
-        if (cpuCount == 3) return 1000; // Victoire garantie
-        if (opponentCount == 3) return -1000; // Défaite immédiate
-        if (cpuCount == 2 && emptyCount == 1) return 50; // Menace de victoire
-        if (opponentCount == 2 && emptyCount == 1) return -50; // Danger imminent
-    
-        return cpuCount - opponentCount; // Léger avantage
-    }
-    */
-
-        private List<Move> getValidMoves(GiantBoard board, String targetBoardIndex, Mark myMark) {
-            List<Move> moves = new ArrayList<>();
-        
-            if (targetBoardIndex.equals("-1")) {  // Vérifier avec .equals() pour les Strings
-                for (LocalBoard lb : board.getPlateaux().values()) {
-                    if (!lb.isFull() && lb.getWinner() == Mark.EMPTY) {  // Vérifier si le plateau est jouable
-                        moves.addAll(lb.getAvailableMoves(myMark, lb.getLocalID()));
-                    }
-                }
-            } else {
-                LocalBoard lb = board.getPlateaux().get(targetBoardIndex);
-                if (lb != null && !lb.isFull() && lb.getWinner() == Mark.EMPTY) {  // Vérifier si le plateau est valide
-                    moves.addAll(lb.getAvailableMoves(myMark, lb.getLocalID()));
-                }
-            }
-            return moves;
-        }
-    }
-    
+}

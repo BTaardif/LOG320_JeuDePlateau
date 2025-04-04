@@ -14,9 +14,6 @@ public class GiantBoard {
     private GiantBoard copyGiantBoard;
 
     public GiantBoard() {
-        board = new int[9][9];
-        activeLocalRow = -1;
-        activeLocalCol = -1;
         this.giantBoard_list = new HashMap<>();
         
             
@@ -223,7 +220,7 @@ public class GiantBoard {
 
         for (Map.Entry<String, LocalBoard> entry : giantBoard_list.entrySet()) {
             int boardX = Character.getNumericValue(entry.getKey().charAt(1));
-            int boardY = Character.getNumericValue(entry.getKey().charAt(2));
+            int boardY = Character.getNumericValue(entry.getKey().charAt(0));
             Mark winner = entry.getValue().getWinner(); // Suppose que LocalBoard a getWinner()
             
             if (winner == player) {

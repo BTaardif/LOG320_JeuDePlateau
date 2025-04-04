@@ -12,8 +12,8 @@ public class Move {
     }
 
     public Move(int r, int c, Mark mark, String localBoardId,String case_id) {
-        this.row = r;
-        this.col = c;
+        this.row = c;
+        this.col = r;
         this.mark = mark;
         this.localBoardId = localBoardId;
         this.piece = case_id;
@@ -41,11 +41,11 @@ public class Move {
     }
 
     public int getLocalBoardX() {
-        return row / 3;  // Donne l'index X du LocalBoard (0,1,2)
+        return row % 3;  // Donne l'index X du LocalBoard (0,1,2)
     }
     
     public int getLocalBoardY() {
-        return col / 3;  // Donne l'index Y du LocalBoard (0,1,2)
+        return col % 3;  // Donne l'index Y du LocalBoard (0,1,2)
     }
     
 }

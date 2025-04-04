@@ -75,19 +75,18 @@ class Client {
                     String[] boardValues;
                     boardValues = s.split(" ");
                     int x=0,y=0;
-                    for(int i=0; i<boardValues.length;i++){
+                    /*for(int i=0; i<boardValues.length;i++){
                         //board[x][y] = Integer.parseInt(boardValues[i]);
                         x++;
                         if(x == 9){
                             x = 0;
                             y++;
                         }
-                    }
+                    }*/
 
                    
                     piece = 2;
-                    
-                    //CPUPlayer2 = new CPUPlayer2(piece);
+                    CPUPlayer2 = new CPUPlayer2(piece);
                 }
 
 
@@ -112,9 +111,7 @@ class Client {
 
                     
                     //play() -> cpu
-                    piece = 2;
-                    CPUPlayer2 = new CPUPlayer2(piece);
-                    Move move = CPUPlayer2.play(giantBoard, s);
+                    Move move = CPUPlayer2.play(giantBoard, s.trim());
                     String move_ai = move.getCase_id();
                     appliquerChangementGtBoard(giantBoard, move_ai , piece);
                     //giantBoard.afficherTiLocalBoard();
