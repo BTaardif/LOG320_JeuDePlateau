@@ -1,10 +1,15 @@
 import java.util.ArrayList;
-import java.util.Arrays;
 
 // Represents a single 3x3 Tic-Tac-Toe board (Local Board)
 class LocalBoard {
-    private Mark[][] board;
-    private Mark winner; // Tracks if X or O won this board, or if it's a DRAW or ONGOING
+    private int[][] board;
+    
+    private static final int PLAYER_EMPTY = 0;
+    private static final int PLAYER_O = 2;
+    private static final int PLAYER_X = 4;
+    
+    private boolean isFull = false;
+    private int localWinner = PLAYER_EMPTY;
 
     // Enum to represent the state of this local board
     public enum BoardState {
@@ -15,140 +20,164 @@ class LocalBoard {
 
     // Constructor
     public LocalBoard() {
-        board = new Mark[3][3];
+        board = new int[3][3];
+        // Initialize board cells to empty
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
-                board[i][j] = Mark.EMPTY;
+                board[i][j] = PLAYER_EMPTY;
             }
         }
-        state = BoardState.ONGOING; // Initially ongoing
+        // Set initial state
+        state = BoardState.ONGOING;
     }
 
     // Copy Constructor
     public LocalBoard(LocalBoard other) {
-        this.board = new Mark[3][3];
+        this.board = new int[3][3];
         for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                this.board[i][j] = other.board[i][j];
-            }
+            System.arraycopy(other.board[i], 0, this.board[i], 0, 3);
         }
         this.state = other.state;
+        this.isFull = other.isFull;
+        this.localWinner = other.localWinner;
     }
 
     // Getters
-    public Mark getMark(int r, int c) {
-        if (r >= 0 && r < 3 && c >= 0 && c < 3) {
-            return board[r][c];
-        }
-        return null; // Or throw exception for invalid coords
+    public int getMark(int r, int c) {
+        return board[r][c];
     }
 
     public BoardState getState() {
         return state;
     }
 
+    public int getLocalWinner() {
+        return localWinner;
+    }
+
+    private void setLocalWinner(int winner) {
+        localWinner = winner;
+    }
+
     // Check if a move is valid within this local board
     public boolean isMoveValid(int r, int c) {
-         return r >= 0 && r < 3 && c >= 0 && c < 3 && board[r][c] == Mark.EMPTY && state == BoardState.ONGOING;
+        return r >= 0 && r < 3 && c >= 0 && c < 3 && board[r][c] == PLAYER_EMPTY && state == BoardState.ONGOING;
     }
 
     // Place a mark and update the board's state
-    public boolean play(int r, int c, Mark mark) {
-        if (isMoveValid(r,c)) {
+    public boolean play(int r, int c, int mark) {
+        if (isMoveValid(r, c)) {
             board[r][c] = mark;
-            updateState(mark); // Check if this move ended the local game
+            updateState();
             return true;
         }
         return false;
     }
 
-     // Check if the board is full
-    public boolean isFull() {
+    // Evaluates the board state from the perspective of 'player'
+    // Returns 100 for a win, -100 for a loss, 0 otherwise.
+    public int evaluate(int player) {
+        int opponent = (player == PLAYER_X) ? PLAYER_O : PLAYER_X;
+
+        // Check rows and columns
         for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                if (board[i][j] == Mark.EMPTY) {
-                    return false;
+            // Row check
+            if (board[i][0] == board[i][1] && board[i][1] == board[i][2] && board[i][0] != PLAYER_EMPTY) {
+                if (board[i][0] == player) return 100;
+                if (board[i][0] == opponent) return -100;
+            }
+            // Column check
+            if (board[0][i] == board[1][i] && board[1][i] == board[2][i] && board[0][i] != PLAYER_EMPTY) {
+                if (board[0][i] == player) return 100;
+                if (board[0][i] == opponent) return -100;
+            }
+        }
+
+        // Check diagonals
+        if (board[0][0] == board[1][1] && board[1][1] == board[2][2] && board[0][0] != PLAYER_EMPTY) {
+            if (board[0][0] == player) return 100;
+            if (board[0][0] == opponent) return -100;
+        }
+        if (board[0][2] == board[1][1] && board[1][1] == board[2][0] && board[0][2] != PLAYER_EMPTY) {
+            if (board[0][2] == player) return 100;
+            if (board[0][2] == opponent) return -100;
+        }
+
+        // If no win/loss, return 0. (You can later enhance this to consider non-terminal heuristics.)
+        return 0;
+    }
+
+    // Update the state of the board (X_WON, O_WON, DRAW, or ONGOING)
+    private void updateState() {
+        // Check rows and columns for a win
+        for (int i = 0; i < 3; i++) {
+            // Row check
+            if (board[i][0] == board[i][1] && board[i][1] == board[i][2] && board[i][0] != PLAYER_EMPTY) {
+                setLocalWinner(board[i][0]);
+                state = (board[i][0] == PLAYER_X) ? BoardState.X_WON : BoardState.O_WON;
+                isFull = true;
+                return;
+            }
+            // Column check
+            if (board[0][i] == board[1][i] && board[1][i] == board[2][i] && board[0][i] != PLAYER_EMPTY) {
+                setLocalWinner(board[0][i]);
+                state = (board[0][i] == PLAYER_X) ? BoardState.X_WON : BoardState.O_WON;
+                isFull = true;
+                return;
+            }
+        }
+        
+        // Check diagonals
+        if (board[0][0] == board[1][1] && board[1][1] == board[2][2] && board[0][0] != PLAYER_EMPTY) {
+            setLocalWinner(board[0][0]);
+            state = (board[0][0] == PLAYER_X) ? BoardState.X_WON : BoardState.O_WON;
+            isFull = true;
+            return;
+        }
+        if (board[0][2] == board[1][1] && board[1][1] == board[2][0] && board[0][2] != PLAYER_EMPTY) {
+            setLocalWinner(board[0][2]);
+            state = (board[0][2] == PLAYER_X) ? BoardState.X_WON : BoardState.O_WON;
+            isFull = true;
+            return;
+        }
+        
+        // Check if board is full (i.e., no empty cells)
+        boolean full = true;
+        for (int r = 0; r < 3; r++) {
+            for (int c = 0; c < 3; c++) {
+                if (board[r][c] == PLAYER_EMPTY) {
+                    full = false;
+                    break;
                 }
             }
         }
-        return true; // No empty cells found
-    }
-
-
-    // Updates the state (X_WON, O_WON, DRAW, ONGOING) after a move
-    private void updateState(Mark lastPlayer) {
-        if (state != BoardState.ONGOING) return; // Already decided
-
-        // Check rows, columns, and diagonals for a win
-        Mark winner = checkWin();
-
-        if (winner != Mark.EMPTY) {
-            state = (winner == Mark.X) ? BoardState.X_WON : BoardState.O_WON;
-        } else if (isFull()) {
+        if (full) {
+            isFull = true;
             state = BoardState.DRAW;
         }
-        // Otherwise, remains ONGOING
     }
 
-    // Helper to check for a win
-    private Mark checkWin() {
-        // Check rows
-        for (int i = 0; i < 3; i++) {
-            if (board[i][0] != Mark.EMPTY && board[i][0] == board[i][1] && board[i][1] == board[i][2]) {
-                return board[i][0];
-            }
-        }
-        // Check columns
-        for (int i = 0; i < 3; i++) {
-            if (board[0][i] != Mark.EMPTY && board[0][i] == board[1][i] && board[1][i] == board[2][i]) {
-                return board[0][i];
-            }
-        }
-        // Check diagonals
-        if (board[0][0] != Mark.EMPTY && board[0][0] == board[1][1] && board[1][1] == board[2][2]) {
-            return board[0][0];
-        }
-        if (board[0][2] != Mark.EMPTY && board[0][2] == board[1][1] && board[1][1] == board[2][0]) {
-            return board[0][2];
-        }
-        return Mark.EMPTY; // No winner
-    }
-
-     // Simple evaluation for the AI (can be expanded)
-    public int evaluate(Mark playerPerspective) {
-        switch(state) {
-            case X_WON: return (playerPerspective == Mark.X) ? 100 : -100;
-            case O_WON: return (playerPerspective == Mark.O) ? 100 : -100;
-            case DRAW: return 0;
-            case ONGOING:
-                // Basic heuristic: count potential lines? (Optional, can be simple 0 for ongoing)
-                 return 0; // Placeholder
-            default: return 0;
-        }
-    }
-
-     // Get empty cells for possible moves within this board
-    public ArrayList<Move> getPossibleLocalMoves(int globalRow, int globalCol) {
+    // Returns a list of valid moves for this local board.
+    public ArrayList<Move> getPossibleLocalMoves() {
         ArrayList<Move> moves = new ArrayList<>();
-         if (state == BoardState.ONGOING) {
+        if (state == BoardState.ONGOING) {
             for (int r = 0; r < 3; r++) {
                 for (int c = 0; c < 3; c++) {
-                    if (board[r][c] == Mark.EMPTY) {
-                        moves.add(new Move(globalRow, globalCol, r, c));
+                    if (board[r][c] == PLAYER_EMPTY) {
+                        moves.add(new Move(r, c));
                     }
                 }
             }
-         }
+        }
         return moves;
     }
 
-    @Override
+    // For debugging: a simple string representation of the board.
     public String toString() {
-        // Basic representation
         StringBuilder sb = new StringBuilder();
-        for(int r=0; r<3; r++) {
-            for (int c=0; c<3; c++) {
-                sb.append(board[r][c] == Mark.EMPTY ? "." : board[r][c].toString());
+        for (int r = 0; r < 3; r++) {
+            for (int c = 0; c < 3; c++) {
+                sb.append(board[r][c]).append(" ");
             }
             sb.append("\n");
         }
