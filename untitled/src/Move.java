@@ -7,6 +7,11 @@ public class Move {
     }
 
     // Getters
-     public int getLocalRow() { return row; }
-     public int getLocalCol() { return col; }
+    public int getRow() {
+        return row;
+    }
+
+    public int getCol() {
+        return col;
+    }
 }
