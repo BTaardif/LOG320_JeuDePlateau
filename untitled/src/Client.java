@@ -5,7 +5,7 @@ import java.util.Arrays;
 class Client {
 
     private static GlobalBoard gameBoard = new GlobalBoard();
-    private static AIPlayer aiPlayer;
+    private static CPUPlayer aiPlayer;
     private static int myMark; // Board.X or Board.O
     private static int opponentMark;
     private static GlobalMove lastOpponentMove = null; // Track opponent's last move
@@ -56,7 +56,7 @@ class Client {
                 if (cmd == '1') {
                     myMark = Board.X;
                     opponentMark = Board.O;
-                    aiPlayer = new AIPlayer(myMark);
+                    aiPlayer = new CPUPlayer(myMark);
                     System.out.println("Starting new game as Player 1 (X).");
                     parseBoardState(input); // Read initial board state
                     gameBoard.printDetailedGlobalBoard(); // Print initial board (should be empty)
@@ -83,7 +83,7 @@ class Client {
                 else if (cmd == '2') {
                     myMark = Board.O;
                     opponentMark = Board.X;
-                    aiPlayer = new AIPlayer(myMark);
+                    aiPlayer = new CPUPlayer(myMark);
                     System.out.println("Starting new game as Player 2 (O).");
                     System.out.println("Waiting for Player 1's first move.");
                     parseBoardState(input); // Read initial board state (will be updated by server again)
@@ -137,7 +137,7 @@ class Client {
                         boolean played = gameBoard.play(aiMove, myMark);
                         if (!played) {
                             System.err.println(
-                                    "CRITICAL: AI generated an invalid move: " + AIPlayer.moveToString(aiMove));
+                                    "CRITICAL: AI generated an invalid move: " + CPUPlayer.moveToString(aiMove));
                             // Attempt recovery or exit
                             break; // Exit on critical error
                         }
@@ -155,11 +155,7 @@ class Client {
                 // Command '4': Last move sent was invalid
                 else if (cmd == '4') {
                     System.err.println("!!!! Server reported last move was invalid !!!!");
-                    // This indicates a bug in our AI's move generation or move string conversion,
-                    // OR a mismatch between our board state and the server's.
-                    // Simplest recovery: Recalculate based on the *current* board state
-                    // (assuming the server rejected the move but didn't change the board state).
-                    // A more robust solution might involve requesting the full board state again.
+
 
                     System.out.println("Attempting to recalculate move...");
                     // Re-use the *previous* lastOpponentMove to determine valid moves now
@@ -175,7 +171,6 @@ class Client {
                     }
 
                 }
-                // Command '5': Game Over
                 else if (cmd == '5') {
                     String finalMoveStr = parseOpponentMove(input); // Read the very last move played
                     System.out.println("Game Over! Last move played was: " + finalMoveStr);
@@ -184,17 +179,7 @@ class Client {
                     GlobalMove finalMove = parseMoveString(finalMoveStr);
                     if (finalMove != null) {
                         // Determine who played last based on whose turn it *would* have been
-                        int lastPlayer = (aiPlayer.findBestMove(gameBoard, finalMove) == null) ? myMark : opponentMark; // Crude
-                                                                                                                        // way,
-                                                                                                                        // better
-                                                                                                                        // track
-                                                                                                                        // turns
-                        // Or simpler: Check whose move it was before receiving '5' - requires turn
-                        // tracking
-                        // Apply the move with the *correct* player's mark if possible
-                        // boolean played = gameBoard.play(finalMove, opponentMark); // Example if
-                        // opponent won
-                        // if (played) gameBoard.printDetailedGlobalBoard();
+                        int lastPlayer = (aiPlayer.findBestMove(gameBoard, finalMove) == null) ? myMark : opponentMark;
                     }
 
                     int winner = gameBoard.checkGlobalWinner();
@@ -373,7 +358,7 @@ class Client {
 
     // Helper to send the AI's move to the server
     private static void sendMoveToServer(BufferedOutputStream output, GlobalMove move) throws IOException {
-        String moveStr = AIPlayer.moveToString(move);
+        String moveStr = CPUPlayer.moveToString(move);
         System.out.println("Sending move: " + moveStr);
         output.write(moveStr.getBytes());
         output.flush(); // Ensure data is sent immediately

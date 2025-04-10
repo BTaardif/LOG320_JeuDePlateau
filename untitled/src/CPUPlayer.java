@@ -1,14 +1,14 @@
 import java.util.ArrayList;
 import java.util.Collections;
 
-public class AIPlayer {
+public class CPUPlayer {
 
     private int aiMark; // Board.X or Board.O
     private int opponentMark;
     private long startTime;
     private final long timeLimitMillis = 2900; // Slightly less than 3 seconds
 
-    public AIPlayer(int aiMark) {
+    public CPUPlayer(int aiMark) {
         this.aiMark = aiMark;
         this.opponentMark = (aiMark == Board.X) ? Board.O : Board.X;
     }
