@@ -13,22 +13,36 @@ public class CPUPlayer {
         this.opponentMark = (aiMark == LocalBoard.X) ? LocalBoard.O : LocalBoard.X;
     }
 
-    // --- Public method to find the best move ---
+    // --- Trouver un meilleur coup ---
     public GlobalMove findBestMove(GlobalBoard board, GlobalMove lastOpponentMove) {
         this.startTime = System.currentTimeMillis();
         GlobalMove bestMoveFound = null;
-        int maxDepth = 1; // Start with depth 1
 
         System.out.println("AI (" + (aiMark == LocalBoard.X ? "X" : "O") + ") thinking...");
 
+        // --- D'abord verifier si on peut ganger directement ---
+        ArrayList<GlobalMove> possibleMoves = board.getPossibleMoves(lastOpponentMove);
+        for (GlobalMove immediateMove : possibleMoves) {
+            GlobalBoard testBoard = new GlobalBoard(board);
+            if (testBoard.play(immediateMove, this.aiMark)) { // Check if move is valid
+                if (testBoard.checkGlobalWinner() == this.aiMark) {
+                    System.out.println("Found immediate winning move: " + moveToString(immediateMove));
+                    return immediateMove;
+                }
+            }
+        }
+
+        // If no immediate win, proceed with iterative deepening search
+        int maxDepth = 1;
         try {
-            // Iterative Deepening: Increase depth until time limit approaches
             while (System.currentTimeMillis() - startTime < timeLimitMillis) {
                 System.out.println("  Trying depth: " + maxDepth);
+                // Pass the already generated list (or regenerate if needed)
+                // Make sure minimax uses a *copy* of the board for exploration
                 MoveScore currentBest = minimaxAlphaBeta(new GlobalBoard(board), lastOpponentMove, maxDepth,
                         Integer.MIN_VALUE, Integer.MAX_VALUE, true);
 
-                // If a valid move was found at this depth and time allows, update bestMoveFound
+                // ...(rest of the iterative deepening loop as before)...
                 if (currentBest != null && currentBest.move != null) {
                     bestMoveFound = currentBest.move;
                     System.out.println("  Depth " + maxDepth + " found move: " + moveToString(bestMoveFound)
@@ -36,26 +50,30 @@ public class CPUPlayer {
                 } else {
                     System.out.println("  Depth " + maxDepth + " found no better move or timed out partially.");
                     if (currentBest == null)
-                        break;
+                        break; // Break if timeout occurred deeper
                 }
 
+                // Check time again *after* completing a depth
                 if (System.currentTimeMillis() - startTime >= timeLimitMillis) {
                     System.out.println("  Time limit reached after completing depth " + maxDepth);
                     break;
                 }
 
                 maxDepth++;
-            }
+
+            } // End while loop
         } catch (TimeoutException e) {
             System.out.println("  Search timed out during exploration.");
         }
 
         if (bestMoveFound == null) {
             System.err.println(
-                    "WARNING: AI could not find a move (timeout or no valid moves?). Returning random valid move.");
-            ArrayList<GlobalMove> possibleMoves = board.getPossibleMoves(lastOpponentMove);
+                    "WARNING: AI could not find a move (timeout or no valid moves?). Returning fallback move.");
+            // Use the list generated earlier for fallback
             if (!possibleMoves.isEmpty()) {
-                Collections.shuffle(possibleMoves); // Randomize
+                // Fallback: Choose first valid move if search failed completely
+                // Shuffling here makes fallback random, but a simple heuristic might be better
+                Collections.shuffle(possibleMoves);
                 bestMoveFound = possibleMoves.get(0);
             } else {
                 System.err.println("CRITICAL WARNING: No possible moves available for AI!");
