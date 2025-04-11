@@ -6,11 +6,11 @@ public class CPUPlayer {
     private int aiMark; // Board.X or Board.O
     private int opponentMark;
     private long startTime;
-    private final long timeLimitMillis = 2900; // Slightly less than 3 seconds
+    private final long timeLimitMillis = 2900; // un peu moins que 3 seconds
 
     public CPUPlayer(int aiMark) {
         this.aiMark = aiMark;
-        this.opponentMark = (aiMark == Board.X) ? Board.O : Board.X;
+        this.opponentMark = (aiMark == LocalBoard.X) ? LocalBoard.O : LocalBoard.X;
     }
 
     // --- Public method to find the best move ---
@@ -19,7 +19,7 @@ public class CPUPlayer {
         GlobalMove bestMoveFound = null;
         int maxDepth = 1; // Start with depth 1
 
-        System.out.println("AI (" + (aiMark == Board.X ? "X" : "O") + ") thinking...");
+        System.out.println("AI (" + (aiMark == LocalBoard.X ? "X" : "O") + ") thinking...");
 
         try {
             // Iterative Deepening: Increase depth until time limit approaches
@@ -35,20 +35,16 @@ public class CPUPlayer {
                             + " with score: " + currentBest.score);
                 } else {
                     System.out.println("  Depth " + maxDepth + " found no better move or timed out partially.");
-                    // If minimax returns null (maybe timed out mid-search at this depth), break
                     if (currentBest == null)
                         break;
                 }
 
-                // Check time again *after* completing a depth
                 if (System.currentTimeMillis() - startTime >= timeLimitMillis) {
                     System.out.println("  Time limit reached after completing depth " + maxDepth);
                     break;
                 }
 
                 maxDepth++;
-                // Optional: Add a maximum search depth cap if needed
-                // if (maxDepth > 10) break;
             }
         } catch (TimeoutException e) {
             System.out.println("  Search timed out during exploration.");
@@ -57,16 +53,13 @@ public class CPUPlayer {
         if (bestMoveFound == null) {
             System.err.println(
                     "WARNING: AI could not find a move (timeout or no valid moves?). Returning random valid move.");
-            // Fallback: If no move found (e.g., timed out on depth 1), pick a random valid
-            // one.
             ArrayList<GlobalMove> possibleMoves = board.getPossibleMoves(lastOpponentMove);
             if (!possibleMoves.isEmpty()) {
                 Collections.shuffle(possibleMoves); // Randomize
                 bestMoveFound = possibleMoves.get(0);
             } else {
-                // This should ideally not happen if the game isn't over
                 System.err.println("CRITICAL WARNING: No possible moves available for AI!");
-                return null; // Or handle game end appropriately
+                return null;
             }
         }
 
@@ -74,7 +67,6 @@ public class CPUPlayer {
         return bestMoveFound;
     }
 
-    // --- Minimax with Alpha-Beta Pruning ---
     private MoveScore minimaxAlphaBeta(GlobalBoard currentBoard, GlobalMove lastMoveMade, int depth, int alpha,
             int beta, boolean isMaximizingPlayer) throws TimeoutException {
 
@@ -85,14 +77,12 @@ public class CPUPlayer {
 
         // Check for terminal state (global win/loss/draw) or depth limit
         int globalWinner = currentBoard.checkGlobalWinner();
-        if (globalWinner != Board.EMPTY || depth == 0 || currentBoard.isGlobalBoardFull()) {
+        if (globalWinner != LocalBoard.EMPTY || depth == 0 || currentBoard.isGlobalBoardFull()) {
             // Return evaluation score relative to the AI player
             return new MoveScore(null, currentBoard.evaluateGlobal(this.aiMark));
         }
 
         ArrayList<GlobalMove> possibleNextMoves = currentBoard.getPossibleMoves(lastMoveMade);
-        // Optional: Randomize move order slightly to explore different branches first
-        // in iterative deepening
         Collections.shuffle(possibleNextMoves);
 
         GlobalMove bestMoveForThisNode = null;
@@ -103,12 +93,11 @@ public class CPUPlayer {
                 GlobalBoard nextBoard = new GlobalBoard(currentBoard);
                 boolean played = nextBoard.play(move, this.aiMark);
                 if (!played)
-                    continue; // Should not happen if getPossibleMoves is correct
+                    continue;
 
-                MoveScore evalResult = minimaxAlphaBeta(nextBoard, move, depth - 1, alpha, beta, false); // Opponent's
-                                                                                                         // turn next
+                MoveScore evalResult = minimaxAlphaBeta(nextBoard, move, depth - 1, alpha, beta, false);
                 if (evalResult == null)
-                    continue; // Might happen if timeout occurred deeper
+                    continue;
 
                 if (evalResult.score > maxEval) {
                     maxEval = evalResult.score;
@@ -119,7 +108,7 @@ public class CPUPlayer {
                     break; // Beta cutoff
                 }
             }
-            if (possibleNextMoves.isEmpty()) { // Handle case where a player has no moves (should be a draw/win state)
+            if (possibleNextMoves.isEmpty()) {
                 return new MoveScore(null, currentBoard.evaluateGlobal(this.aiMark));
             }
             return new MoveScore(bestMoveForThisNode, maxEval);
@@ -133,23 +122,22 @@ public class CPUPlayer {
                     continue;
 
                 MoveScore evalResult = minimaxAlphaBeta(nextBoard, move, depth - 1, alpha, beta, true); // AI's turn
-                                                                                                        // next
                 if (evalResult == null)
-                    continue; // Might happen if timeout occurred deeper
+                    continue;
 
                 if (evalResult.score < minEval) {
                     minEval = evalResult.score;
-                    bestMoveForThisNode = move; // Note: we primarily need the *score* for min node
+                    bestMoveForThisNode = move;
                 }
                 beta = Math.min(beta, evalResult.score);
                 if (beta <= alpha) {
-                    break; // Alpha cutoff
+                    break;
                 }
             }
             if (possibleNextMoves.isEmpty()) { // Handle case where a player has no moves
                 return new MoveScore(null, currentBoard.evaluateGlobal(this.aiMark));
             }
-            return new MoveScore(bestMoveForThisNode, minEval); // Return score, move isn't directly used by caller here
+            return new MoveScore(bestMoveForThisNode, minEval);
         }
     }
 
@@ -175,21 +163,13 @@ public class CPUPlayer {
     public static String moveToString(GlobalMove move) {
         if (move == null)
             return "";
-        // Global board uses 0-2, local board uses 0-2
-        // Server needs A1-I9 format
-        // Global Col 0-2 -> Local Col 0-2 => Overall Col 0-8 -> A-I
-        // Global Row 0-2 -> Local Row 0-2 => Overall Row 0-8 -> 1-9 (inverted?) Check
-        // PDF Figure 1 mapping
-        // PDF Figure 1 suggests: A-I maps to columns 0-8. 1-9 maps to rows 0-8 (row 1
-        // is index 0, row 9 is index 8)
 
         int overallCol = move.getGlobalCol() * 3 + move.getLocalCol(); // 0-8
         int overallRow = move.getGlobalRow() * 3 + move.getLocalRow(); // 0-8
 
-        char colChar = (char) ('A' + overallCol); // A-I
-        char rowChar = (char) ('1' + (8 - overallRow)); // 1-9 (mapping 0->9, 1->8 ... 8->1 seems wrong, let's try 0->1,
-                                                        // 8->9)
-        rowChar = (char) ('1' + overallRow); // Correct mapping: 0->'1', 8->'9'
+        char colChar = (char) ('A' + overallCol);
+        char rowChar = (char) ('1' + (8 - overallRow));
+        rowChar = (char) ('1' + overallRow);
 
         return "" + colChar + rowChar;
     }

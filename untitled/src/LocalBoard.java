@@ -1,15 +1,16 @@
 import java.util.ArrayList;
 
-public class Board {
+public class LocalBoard {
     // Constantes représentant les pièces.
     public static final int EMPTY = 0; // Case vide
-    public static final int O = 2;     // Pièce O
-    public static final int X = 4;     // Pièce X
+    public static final int O = 2; // Pièce O
+    public static final int X = 4; // Pièce X
 
     private int[][] board; // Le plateau de jeu 3x3
 
-    // Constructeur par défaut initialise un plateau 3x3 avec toutes les cases vides.
-    public Board() {
+    // Constructeur par défaut initialise un plateau 3x3 avec toutes les cases
+    // vides.
+    public LocalBoard() {
         board = new int[3][3];
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
@@ -19,7 +20,7 @@ public class Board {
     }
 
     // Constructeur de copie pour créer une copie profonde du plateau.
-    public Board(Board other) {
+    public LocalBoard(LocalBoard other) {
         board = new int[3][3];
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
@@ -29,14 +30,14 @@ public class Board {
     }
 
     // Joue un coup sur le plateau.
-    public void play(Move m, int piece) {
+    public void play(LocalMove m, int piece) {
         if (isValidMove(m)) {
             board[m.getRow()][m.getCol()] = piece;
         }
     }
 
     // Vérifie si un coup est valide (dans les limites et sur une case vide).
-    public boolean isValidMove(Move m) {
+    public boolean isValidMove(LocalMove m) {
         int r = m.getRow();
         int c = m.getCol();
         return r >= 0 && r < 3 && c >= 0 && c < 3 && board[r][c] == EMPTY;
@@ -105,34 +106,37 @@ public class Board {
 
         // Vérifie les opportunités du joueur (2 pièces alignées avec une case vide)
         if ((p1 == piece && p2 == piece && p3 == EMPTY) ||
-            (p1 == piece && p2 == EMPTY && p3 == piece) ||
-            (p1 == EMPTY && p2 == piece && p3 == piece)) {
+                (p1 == piece && p2 == EMPTY && p3 == piece) ||
+                (p1 == EMPTY && p2 == piece && p3 == piece)) {
             score = 10;
         }
         // Vérifie les opportunités du joueur (1 pièce alignée avec deux cases vides)
         else if ((p1 == piece && p2 == EMPTY && p3 == EMPTY) ||
-                 (p1 == EMPTY && p2 == piece && p3 == EMPTY) ||
-                 (p1 == EMPTY && p2 == EMPTY && p3 == piece)) {
+                (p1 == EMPTY && p2 == piece && p3 == EMPTY) ||
+                (p1 == EMPTY && p2 == EMPTY && p3 == piece)) {
             score = 1;
         }
 
-        // Vérifie les opportunités de l'adversaire (2 pièces alignées avec une case vide) - score négatif
+        // Vérifie les opportunités de l'adversaire (2 pièces alignées avec une case
+        // vide) - score négatif
         if ((p1 == opponent && p2 == opponent && p3 == EMPTY) ||
-            (p1 == opponent && p2 == EMPTY && p3 == opponent) ||
-            (p1 == EMPTY && p2 == opponent && p3 == opponent)) {
+                (p1 == opponent && p2 == EMPTY && p3 == opponent) ||
+                (p1 == EMPTY && p2 == opponent && p3 == opponent)) {
             score = -10; // Priorité plus élevée pour bloquer l'adversaire que pour avancer soi-même
         }
-        // Vérifie les opportunités de l'adversaire (1 pièce alignée avec deux cases vides) - score négatif
+        // Vérifie les opportunités de l'adversaire (1 pièce alignée avec deux cases
+        // vides) - score négatif
         else if ((p1 == opponent && p2 == EMPTY && p3 == EMPTY) ||
-                 (p1 == EMPTY && p2 == opponent && p3 == EMPTY) ||
-                 (p1 == EMPTY && p2 == EMPTY && p3 == opponent)) {
-            // Seulement si le score n'est pas déjà positif (ne pas écraser une opportunité pour nous)
-            if (score <= 0) score = -1;
+                (p1 == EMPTY && p2 == opponent && p3 == EMPTY) ||
+                (p1 == EMPTY && p2 == EMPTY && p3 == opponent)) {
+            // Seulement si le score n'est pas déjà positif (ne pas écraser une opportunité
+            // pour nous)
+            if (score <= 0)
+                score = -1;
         }
 
         return score;
     }
-
 
     // Vérifie si la pièce donnée a gagné.
     public boolean checkWinner(int piece) {
@@ -165,12 +169,12 @@ public class Board {
     }
 
     // Retourne une liste de tous les coups possibles (cases vides).
-    public ArrayList<Move> getPossibleMoves() {
-        ArrayList<Move> moves = new ArrayList<>();
+    public ArrayList<LocalMove> getPossibleMoves() {
+        ArrayList<LocalMove> moves = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
                 if (board[i][j] == EMPTY) {
-                    moves.add(new Move(i, j));
+                    moves.add(new LocalMove(i, j));
                 }
             }
         }
