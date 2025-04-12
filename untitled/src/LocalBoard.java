@@ -46,20 +46,7 @@ public class LocalBoard {
     // Retourne la pièce à une case donnée.
     public int getCell(int r, int c) {
         return board[r][c];
-    }
-
-    // Retourne 100 pour une victoire, -100 pour une défaite, 0 pour nul/en cours.
-    public int evaluate(int piece) {
-        int opponent = (piece == X) ? O : X;
-
-        // Vérifie les lignes, colonnes et diagonales pour une victoire/défaite
-        if (checkWinner(piece))
-            return 100;
-        if (checkWinner(opponent))
-            return -100;
-
-        return 0;
-    }
+    }    
 
     // Attribue des points en fonction des lignes potentiellement gagnantes.
     public int heuristicEvaluate(int piece) {
