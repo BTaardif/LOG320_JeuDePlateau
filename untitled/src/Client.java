@@ -294,24 +294,26 @@ class Client {
         }
 
         String moveStr = new String(buffer, 0, bytesRead).trim();
-        // Handle the special "A0" case for the first move prompt for player X
+
+        // Premier tour ==> A0
         if (moveStr.equals("A0"))
             return "A0";
 
-        // Basic validation: Should be 2 chars, Letter A-I, Digit 1-9
+        // Convertion et validation du String reçu. Traduction en position de coup.
         if (moveStr.length() == 2 && moveStr.charAt(0) >= 'A' && moveStr.charAt(0) <= 'I' && moveStr.charAt(1) >= '1'
                 && moveStr.charAt(1) <= '9') {
             return moveStr;
         } else {
             System.err.println("Warning: Received potentially invalid move format: \"" + moveStr + "\"");
-            return moveStr; // Return raw string for now, parsing logic will handle later
+            return moveStr;
         }
     }
 
-    // Helper to parse move string ("A1" - "I9") into GlobalMove object
+    // Traduit le String du serveur en coup jouable
     public static GlobalMove parseMoveString(String moveStr) {
+
+        // Premier tour ==> A0
         if (moveStr == null || moveStr.length() != 2 || moveStr.equals("A0")) {
-            // A0 is the special invalid move sent with the first '3' command to player X
             return null;
         }
         moveStr = moveStr.trim().toUpperCase();
@@ -319,6 +321,8 @@ class Client {
         char colChar = moveStr.charAt(0);
         char rowChar = moveStr.charAt(1);
 
+
+        //Error handling pour un coup impossible
         if (colChar < 'A' || colChar > 'I' || rowChar < '1' || rowChar > '9') {
             System.err.println("Error parsing move string: Invalid format '" + moveStr + "'");
             return null;
@@ -327,6 +331,7 @@ class Client {
         int overallCol = colChar - 'A'; // 0-8
         int overallRow = rowChar - '1'; // 0-8
 
+        //convertion 3x3
         int gRow = overallRow / 3;
         int lRow = overallRow % 3;
         int gCol = overallCol / 3;
@@ -335,11 +340,10 @@ class Client {
         return new GlobalMove(gRow, gCol, lRow, lCol);
     }
 
-    // Helper to send the AI's move to the server
     private static void sendMoveToServer(BufferedOutputStream output, GlobalMove move) throws IOException {
         String moveStr = CPUPlayer.moveToString(move);
         System.out.println("Sending move: " + moveStr);
         output.write(moveStr.getBytes());
-        output.flush(); // Ensure data is sent immediately
+        output.flush();
     }
 }

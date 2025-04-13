@@ -1,30 +1,47 @@
 import java.util.ArrayList;
 import java.util.Collections;
 
+/**
+ * CPU PLAYER
+ * 
+ * Classe qui sert à trouver le meilleur coup à jouer.
+ */
+
+
 public class CPUPlayer {
 
-    private int aiMark; // Board.X or Board.O
+/*
+ * Variabkes
+ * */    
+    private int aiMark; 
     private int opponentMark;
     private long startTime;
-    private final long timeLimitMillis = 2900; // un peu moins que 3 seconds
+    private final long timeLimitMillis = 2900; // Voir la classe Client. Il faut se garder un peu de temps pour capter les erreurs.
 
+/*
+ * Constructor
+ *  */    
     public CPUPlayer(int aiMark) {
         this.aiMark = aiMark;
         this.opponentMark = (aiMark == LocalBoard.X) ? LocalBoard.O : LocalBoard.X;
     }
 
-    // --- Trouver un meilleur coup ---
+
+/*
+ * Methods
+ * */    
+    // Trouver le meilleur coup à jouer.
     public GlobalMove findBestMove(GlobalBoard board, GlobalMove lastOpponentMove) {
         this.startTime = System.currentTimeMillis();
         GlobalMove bestMoveFound = null;
 
         System.out.println("AI (" + (aiMark == LocalBoard.X ? "X" : "O") + ") thinking...");
 
-        // --- D'abord verifier si on peut ganger directement ---
+        //Si on peut gagner on gagne.
         ArrayList<GlobalMove> possibleMoves = board.getPossibleMoves(lastOpponentMove);
         for (GlobalMove immediateMove : possibleMoves) {
             GlobalBoard testBoard = new GlobalBoard(board);
-            if (testBoard.play(immediateMove, this.aiMark)) { // Check if move is valid
+            if (testBoard.play(immediateMove, this.aiMark)) {
                 if (testBoard.checkGlobalWinner() == this.aiMark) {
                     System.out.println("Found immediate winning move: " + moveToString(immediateMove));
                     return immediateMove;
@@ -32,28 +49,45 @@ public class CPUPlayer {
             }
         }
 
-        // If no immediate win, proceed with iterative deepening search
+        // Sinon on analyse le board.
         int maxDepth = 1;
         try {
             while (System.currentTimeMillis() - startTime < timeLimitMillis) {
-                System.out.println("  Trying depth: " + maxDepth);
-                // Pass the already generated list (or regenerate if needed)
-                // Make sure minimax uses a *copy* of the board for exploration
-                MoveScore currentBest = minimaxAlphaBeta(new GlobalBoard(board), lastOpponentMove, maxDepth,
-                        Integer.MIN_VALUE, Integer.MAX_VALUE, true);
+                System.out.println("  Trying depth: " + maxDepth); // Print la profondeur
+
+                // Créer un move pour calculer le minimax.
+                // S'assurer que le board n'est pas le board réel mais le board copié.
+                MoveScore currentBest = minimaxAlphaBeta(new GlobalBoard(board), 
+                        lastOpponentMove, 
+                        maxDepth,
+                        Integer.MIN_VALUE, 
+                        Integer.MAX_VALUE, 
+                        true);
 
                 // ...(rest of the iterative deepening loop as before)...
                 if (currentBest != null && currentBest.move != null) {
                     bestMoveFound = currentBest.move;
-                    System.out.println("  Depth " + maxDepth + " found move: " + moveToString(bestMoveFound)
-                            + " with score: " + currentBest.score);
+
+                    //indiquer les donnees de la profondeur
+                    System.out.println(
+                        "  Depth " + 
+                        maxDepth + 
+                        " found move: " + 
+                        moveToString(bestMoveFound) + 
+                        " with score: " + 
+                        currentBest.score);
                 } else {
-                    System.out.println("  Depth " + maxDepth + " found no better move or timed out partially.");
+
+                    //Arrive rarement plus un error handling
+                    System.out.println(
+                    "  Depth " + 
+                    maxDepth + 
+                    " found no better move or timed out partially.");
                     if (currentBest == null)
-                        break; // Break if timeout occurred deeper
+                        break; 
                 }
 
-                // Check time again *after* completing a depth
+                // Valide si il reste du temps.
                 if (System.currentTimeMillis() - startTime >= timeLimitMillis) {
                     System.out.println("  Time limit reached after completing depth " + maxDepth);
                     break;
@@ -61,18 +95,17 @@ public class CPUPlayer {
 
                 maxDepth++;
 
-            } // End while loop
+            } // While se conlue ici
         } catch (TimeoutException e) {
             System.out.println("  Search timed out during exploration.");
         }
 
+
+        //Si aucune best move n'est trouvé ==> Prendre un coup hasard dans les coups possibles
         if (bestMoveFound == null) {
             System.err.println(
                     "WARNING: AI could not find a move (timeout or no valid moves?). Returning fallback move.");
-            // Use the list generated earlier for fallback
             if (!possibleMoves.isEmpty()) {
-                // Fallback: Choose first valid move if search failed completely
-                // Shuffling here makes fallback random, but a simple heuristic might be better
                 Collections.shuffle(possibleMoves);
                 bestMoveFound = possibleMoves.get(0);
             } else {
@@ -85,34 +118,49 @@ public class CPUPlayer {
         return bestMoveFound;
     }
 
+
+
+    /**
+     * ALGORITHME ALPHA BETA
+     * Prend l'heuristic du globalBoard et calcul le score du coup 
+     * 
+     * Cette méthode est basé sur le laboratoire 1 de Ahmed Sherif
+     * 
+     */
     private MoveScore minimaxAlphaBeta(GlobalBoard currentBoard, GlobalMove lastMoveMade, int depth, int alpha,
             int beta, boolean isMaximizingPlayer) throws TimeoutException {
 
-        // Check for timeout
+        
+        // Verifie s'il reste du temps
         if (System.currentTimeMillis() - startTime >= timeLimitMillis) {
             throw new TimeoutException();
         }
 
-        // Check for terminal state (global win/loss/draw) or depth limit
+        // Vérifie s'il n'y a toujours pas de gagnan.
         int globalWinner = currentBoard.checkGlobalWinner();
         if (globalWinner != LocalBoard.EMPTY || depth == 0 || currentBoard.isGlobalBoardFull()) {
-            // Return evaluation score relative to the AI player
             return new MoveScore(null, currentBoard.evaluateGlobal(this.aiMark));
         }
 
         ArrayList<GlobalMove> possibleNextMoves = currentBoard.getPossibleMoves(lastMoveMade);
+
+        // Nous pourrions travailler sur une façon d'organiser où commencer au lieu d'y aller de manière aléatoire.
         Collections.shuffle(possibleNextMoves);
 
         GlobalMove bestMoveForThisNode = null;
 
-        if (isMaximizingPlayer) { // AI's turn (Maximize)
+
+        //Regarder si AlphaBeta calcul le max ou le mi
+        if (isMaximizingPlayer) {
             int maxEval = Integer.MIN_VALUE;
             for (GlobalMove move : possibleNextMoves) {
+                // S'assurer de copier le board pour le calculer
                 GlobalBoard nextBoard = new GlobalBoard(currentBoard);
                 boolean played = nextBoard.play(move, this.aiMark);
                 if (!played)
                     continue;
 
+                //Récurrence
                 MoveScore evalResult = minimaxAlphaBeta(nextBoard, move, depth - 1, alpha, beta, false);
                 if (evalResult == null)
                     continue;
@@ -121,9 +169,11 @@ public class CPUPlayer {
                     maxEval = evalResult.score;
                     bestMoveForThisNode = move;
                 }
+
+                //Pruning
                 alpha = Math.max(alpha, evalResult.score);
                 if (beta <= alpha) {
-                    break; // Beta cutoff
+                    break;
                 }
             }
             if (possibleNextMoves.isEmpty()) {
@@ -131,35 +181,48 @@ public class CPUPlayer {
             }
             return new MoveScore(bestMoveForThisNode, maxEval);
 
-        } else { // Opponent's turn (Minimize)
+        } else {
             int minEval = Integer.MAX_VALUE;
+
+            // Regarer pour l'ensemble des coups possible pour le min.
             for (GlobalMove move : possibleNextMoves) {
                 GlobalBoard nextBoard = new GlobalBoard(currentBoard);
                 boolean played = nextBoard.play(move, this.opponentMark);
                 if (!played)
                     continue;
 
+                //Récurrence
                 MoveScore evalResult = minimaxAlphaBeta(nextBoard, move, depth - 1, alpha, beta, true); // AI's turn
                 if (evalResult == null)
                     continue;
-
+   
                 if (evalResult.score < minEval) {
                     minEval = evalResult.score;
                     bestMoveForThisNode = move;
                 }
+
+                //Pruning
                 beta = Math.min(beta, evalResult.score);
                 if (beta <= alpha) {
                     break;
                 }
             }
-            if (possibleNextMoves.isEmpty()) { // Handle case where a player has no moves
+
+            //Retourne qqch si rien ne peut être joué
+            if (possibleNextMoves.isEmpty()) {
                 return new MoveScore(null, currentBoard.evaluateGlobal(this.aiMark));
             }
             return new MoveScore(bestMoveForThisNode, minEval);
         }
     }
 
-    // --- Helper class to store move and its score ---
+    /**
+     * 
+     * UTILS SECTION
+     */
+
+
+    //Classe qui peremet d'enregistrer le coup a jouer et le score;
     private static class MoveScore {
         GlobalMove move;
         int score;
@@ -170,14 +233,13 @@ public class CPUPlayer {
         }
     }
 
-    // --- Custom Exception for Timeout ---
     private static class TimeoutException extends Exception {
         public TimeoutException() {
             super("Search time limit exceeded.");
         }
     }
 
-    // --- Utility to convert move to server string ---
+    // Convertion d'un move en string
     public static String moveToString(GlobalMove move) {
         if (move == null)
             return "";
