@@ -72,33 +72,31 @@ class Client {
                         System.err.println("AI peut pas faire un coup.");
                         break;
                     }
-                    lastOpponentMove = null; // Reset opponent move
+                    lastOpponentMove = null; // Reset le coup de l'adversaire
 
                 }
-                // Command '2': Start game as Player 2 (O)
+                // Command '2': Commencer le jeux en tante que joueur 2 (X)
                 else if (cmd == '2') {
                     myMark = LocalBoard.O;
                     opponentMark = LocalBoard.X;
                     aiPlayer = new CPUPlayer(myMark);
                     System.out.println("Commencer le jeux en tant que Joueur 2 (O). Attente pour le coup de Joueur x");
-                    parseBoardState(input); // Read initial board state (will be updated by server again)
-                    // Note: The server will likely send command '3' next with Player 1's move.
-                    lastOpponentMove = null; // Opponent hasn't moved yet
-                    // Do not print board here, wait for command '3'
+                    parseBoardState(input); // Lire l'état initial du plateau (sera mis à jour par le serveur)
+                    
+                    lastOpponentMove = null; // L'adversaire n'a pas encore joué
+                    
 
                 }
-                // Command '3': Server requests next move, provides opponent's last move
+                // Commande '3' : Le serveur demande le prochain coup / fournit le dernier coup de l'adversaire
                 else if (cmd == '3') {
-                    String opponentMoveStr = parseOpponentMove(input); // Read opponent's move string
+                    String opponentMoveStr = parseOpponentMove(input); // Lire la chaîne représentant le coup de l'adversaire
                     System.out.println("Opponent played: " + opponentMoveStr);
 
-                    // Important: Parse and apply the opponent's move *before* AI calculates its
-                    // move
-                    lastOpponentMove = parseMoveString(opponentMoveStr); // Update opponent's last move
+                    lastOpponentMove = parseMoveString(opponentMoveStr); // Mettre à jour le dernier coup
 
                     if (lastOpponentMove != null) {
-                        // Validate if the received move is playable on our current board state
-                        // Note: Server *should* send valid moves, but good to check
+                        // Vérifier si le coup reçu est jouable sur notre plateau actuel
+                        
                         if (gameBoard.isLocalBoardClosed(lastOpponentMove.getGlobalRow(),
                                 lastOpponentMove.getGlobalCol()) ||
                                 gameBoard.boards[lastOpponentMove.getGlobalRow()][lastOpponentMove.getGlobalCol()]
@@ -106,35 +104,35 @@ class Client {
                                                 lastOpponentMove.getLocalCol()) != LocalBoard.EMPTY) {
                             System.err.println("WARNING: Server sent an opponent move (" + opponentMoveStr
                                     + ") that seems invalid on our board!");
-                            // Potentially request board resync or handle error
                         }
 
                         boolean played = gameBoard.play(lastOpponentMove, opponentMark);
                         if (!played) {
                             System.err.println("ERROR: Failed to apply valid opponent move " + opponentMoveStr
                                     + " to internal board!");
-                            // This indicates a serious state mismatch
-                            // gameBoard.printDetailedGlobalBoard(); // Print board state for debugging
-                            break; // Exit on critical error
+                            // gameBoard.printDetailedGlobalBoard(); //Afficher l'état du plateau pour le débogage
+
+                            break; // Quitter
                         }
                         System.out.println("Board state after opponent's move:");
-                        // gameBoard.printDetailedGlobalBoard();
+                        // gameBoard.printDetailedGlobalBoard(); //Afficher l'état du plateau pour le débogage
+                            
                     } else if (!opponentMoveStr.equals("A0") && !opponentMoveStr.trim().isEmpty()) {
-                        // A0 is expected for the very first prompt for X, ignore other invalid formats
+                        // A0 est attendu pour la toute première invite pour X, ignorer les autres formats invalides
                         System.err.println("Could not parse opponent move: " + opponentMoveStr);
                     }
 
-                    // Now, calculate and send AI's move
+                    // Maintenant, calculer et envoyer le coup de l'IA
                     System.out.println("Calculating AI move...");
                     GlobalMove aiMove = aiPlayer.findBestMove(gameBoard, lastOpponentMove);
                     if (aiMove != null) {
-                        // Apply AI move to our internal board *before* sending
+                        // Appliquer le coup de l'IA sur notre plateau interne
                         boolean played = gameBoard.play(aiMove, myMark);
                         if (!played) {
                             System.err.println(
                                     "CRITICAL: AI generated an invalid move: " + CPUPlayer.moveToString(aiMove));
-                            // Attempt recovery or exit
-                            break; // Exit on critical error
+                            // Tentative de récupération ou sortie
+                            break; // Quitter
                         }
 
                         sendMoveToServer(output, aiMove);
@@ -142,36 +140,34 @@ class Client {
                         // gameBoard.printDetailedGlobalBoard();
                     } else {
                         System.err.println("AI could not determine a move.");
-                        // Handle error - maybe send a default move or exit?
                         break;
                     }
 
                 }
-                // Command '4': Last move sent was invalid
+                // Commande '4' : Le dernier coup envoyé était invalide
                 else if (cmd == '4') {
                     System.err.println("!!!! Server reported last move was invalid !!!!");
 
                     System.out.println("Attempting to recalculate move...");
-                    // Re-use the *previous* lastOpponentMove to determine valid moves now
+                    // Réutiliser le *précédent* lastOpponentMove pour déterminer les coups valides maintenant
                     GlobalMove aiMove = aiPlayer.findBestMove(gameBoard, lastOpponentMove);
                     if (aiMove != null) {
-                        // DO NOT apply the move locally again if the server rejected it. Just send.
-                        // boolean played = gameBoard.play(aiMove, myMark); // No!
+                        
                         sendMoveToServer(output, aiMove);
-                        // We assume the server will accept this one. If not, we might loop.
+                        // Nous supposons que le serveur acceptera celui-ci. Sinon, nous pourrions boucler.
                     } else {
                         System.err.println("AI could not determine a recovery move.");
                         break;
                     }
 
                 } else if (cmd == '5') {
-                    String finalMoveStr = parseOpponentMove(input); // Read the very last move played
+                    String finalMoveStr = parseOpponentMove(input); // Lire le tout dernier coup joué
                     System.out.println("Game Over! Last move played was: " + finalMoveStr);
 
-                    // Apply the final move to see the end state
+                    // Appliquer le dernier coup pour voir l'état final
                     GlobalMove finalMove = parseMoveString(finalMoveStr);
                     if (finalMove != null) {
-                        // Determine who played last based on whose turn it *would* have been
+                       // Déterminer qui a joué en dernier en fonction de qui *aurait dû* jouer
                         int lastPlayer = (aiPlayer.findBestMove(gameBoard, finalMove) == null) ? myMark : opponentMark;
                     }
 
@@ -183,42 +179,40 @@ class Client {
                     else
                         System.out.println("It's a DRAW!");
 
-                    break; // Exit game loop
+                    break; // Quitter
                 } else {
                     System.out.println("Unknown command from server: " + cmd);
-                    // Skip remaining bytes if any?
                     if (input.available() > 0) {
                         byte[] buffer = new byte[input.available()];
                         input.read(buffer, 0, buffer.length);
                         System.out.println("  Skipped extra data: " + new String(buffer));
                     }
                 }
-            } // End while loop
+            } // fin de la boucle while
 
         } catch (IOException e) {
             System.err.println("Connection error: " + e.getMessage());
             e.printStackTrace();
         } finally {
-            // Clean up resources (though socket closing isn't explicitly shown in original)
-            // try { if (MyClient != null) MyClient.close(); } catch (IOException e) {}
+            // Nettoyer les ressources (bien que la fermeture du socket ne soit pas explicitement montrée dans l'original)
             System.out.println("Client shutting down.");
         }
     }
 
-    // Helper to read and parse the full board state (81 numbers)
+    // Lire et analyser l'état complet du plateau 
     private static void parseBoardState(BufferedInputStream input) throws IOException {
-        byte[] buffer = new byte[2048]; // Adjust size as needed, should be > 81*2 + spaces
+        byte[] buffer = new byte[2048]; // Ajuster la taille si nécessaire, devrait être > 81*2 + espaces
         int bytesRead = 0;
         int attempts = 0;
 
-        // Read in chunks until we likely have the full board string
-        while (bytesRead < 81 * 2 && attempts < 5) { // Need at least 81 digits + 80 spaces
+        //  lire les données envoyées par le serveur concernant l'état du plateau
+        while (bytesRead < 81 * 2 && attempts < 5) { // Besoin d'au moins 81 chiffres + 80 espaces
             if (input.available() > 0) {
                 int readNow = input.read(buffer, bytesRead, buffer.length - bytesRead);
                 if (readNow > 0)
                     bytesRead += readNow;
             } else {
-                // Wait briefly if no data is available, server might be slow
+                // Attendre brièvement si aucune donnée n'est disponible, 
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
@@ -234,14 +228,13 @@ class Client {
         }
 
         String boardString = new String(buffer, 0, bytesRead).trim();
-        System.out.println("Received board string (raw): \"" + boardString + "\""); // Debug output
+        System.out.println("Received board string (raw): \"" + boardString + "\""); // Sortie de débogage
 
-        String[] boardValues = boardString.split("\\s+"); // Split by one or more spaces
+        String[] boardValues = boardString.split("\\s+"); 
 
         if (boardValues.length < 81) {
             System.err.println("Error: Received incomplete board state. Expected 81 values, got " + boardValues.length);
             System.err.println("Values: " + Arrays.toString(boardValues));
-            // Might need to read more data or handle error
             return;
         }
 
@@ -252,13 +245,13 @@ class Client {
                     for (int lCol = 0; lCol < 3; lCol++) {
                         try {
                             int piece = Integer.parseInt(boardValues[index]);
-                            // Need to place the piece on the correct local board
-                            gameBoard.boards[gRow][gCol].play(new LocalMove(lRow, lCol), piece); // Directly set piece
+                            // Placer la pièce sur le bon sous-plateau
+                            gameBoard.boards[gRow][gCol].play(new LocalMove(lRow, lCol), piece); // Définit directement la pièce
                             index++;
                         } catch (NumberFormatException e) {
                             System.err
                                     .println("Error parsing board value at index " + index + ": " + boardValues[index]);
-                            return; // Stop parsing on error
+                            return; // Arrêter l'analyse en cas d'erreur
                         } catch (ArrayIndexOutOfBoundsException e) {
                             System.err.println("Error: Ran out of board values at index " + index);
                             return;
@@ -268,19 +261,18 @@ class Client {
             }
         }
         System.out.println("Successfully parsed board state.");
-        // After parsing the raw state, update the winners array based on the parsed
-        // boards
+        // mettre à jour le tableau des gagnants locaux
+
         gameBoard.updateAllLocalWinners();
     }
 
-    // Helper to read opponent move string (e.g., "D6") after command '3' or '5'
+    //  Méthode utilitaire pour lire le coup de l'adversaire après la commande '3' or '5'
     private static String parseOpponentMove(BufferedInputStream input) throws IOException {
-        // Server sends the move string, e.g., " D6" (note potential leading space)
-        // Read a small buffer, expect move like " D6\n" or similar.
-        byte[] buffer = new byte[16]; // More than enough for " D6\n"
+        // Le serveur envoie le coup sous forme de chaîne " D6"
+        byte[] buffer = new byte[16]; 
         int bytesRead = 0;
         int attempts = 0;
-        // Read until we get *some* data or timeout
+        // Lire jusqu'à obtenir des données ou expiration du délai
         while (bytesRead == 0 && attempts < 10) {
             if (input.available() > 0) {
                 int readNow = input.read(buffer, 0, buffer.length);
